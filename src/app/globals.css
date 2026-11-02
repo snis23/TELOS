@@ -1,0 +1,470 @@
+@import "tailwindcss";
+
+/*
+ * Telos 디자인 토큰 (spec.md 3장)
+ * 색, 글꼴, 크기, 간격은 이 파일에만 값으로 쓴다. 컴포넌트에서는 아래 이름만 쓴다.
+ */
+
+@custom-variant touch (@media (pointer: coarse));
+
+/* ───────── 3.1 기본 색 / 3.2 상태 색 / 3.3 과목 색 ───────── */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f7f6f3;
+  --surface: #ffffff;
+  --surface-2: #f2f1ed;
+  --line: #eceae5;
+  --line-2: #d9d7d0;
+  --ink: #2a2b30;
+  --ink-2: #3b3d45;
+  --sub: #6e7079;
+  --accent: #4f5fc9;
+  --accent-strong: #4150b5;
+  --nav-on: #eceef9;
+  --timer-bg: #eceef9;
+  --check: #7f8ee6;
+  --accent-dot: #9eaaf0;
+  --btn: #2a2b30;
+  --btn-ink: #ffffff;
+  --chip-on: #ffffff;
+  --chip-on-line: #b9c2f2;
+  --chip-off: rgba(255, 255, 255, 0.55);
+  --nap-soft: #f0ebfa;
+  --nap-ink: #6a4bb0;
+  --nap-on: #bba6ec;
+  --ok-soft: #e0f2ec;
+  --ok-ink: #2c7563;
+
+  --urgent-bg: #f9e3dc;
+  --urgent-ink: #a6452c;
+  --urgent-bar: #f1c9bc;
+  --warn-bg: #f8efd9;
+  --warn-ink: #86621a;
+  --warn-bar: #ecddb5;
+  --normal-bg: #ecedf1;
+  --normal-ink: #3b3d45;
+  --normal-bar: #d7d9e0;
+  --defer-dot: #e8c77a;
+
+  --subject-rose-dot: #eba3ae;
+  --subject-rose-tag: #fbe6e9;
+  --subject-rose-tag-ink: #a3374a;
+  --subject-periwinkle-dot: #9eaaf0;
+  --subject-periwinkle-tag: #e8ebfb;
+  --subject-periwinkle-tag-ink: #4150b5;
+  --subject-mint-dot: #8ccfbc;
+  --subject-mint-tag: #e0f2ec;
+  --subject-mint-tag-ink: #2c7563;
+  --subject-butter-dot: #e8c77a;
+  --subject-butter-tag: #f9f0d9;
+  --subject-butter-tag-ink: #80601a;
+  --subject-lavender-dot: #bba6ec;
+  --subject-lavender-tag: #eee8fa;
+  --subject-lavender-tag-ink: #6a4bb0;
+  --subject-peach-dot: #f2b48c;
+  --subject-peach-tag: #fcebdf;
+  --subject-peach-tag-ink: #9a4f1e;
+  --subject-sky-dot: #8ec5ec;
+  --subject-sky-tag: #e2f0fa;
+  --subject-sky-tag-ink: #22648f;
+  --subject-sage-dot: #b5c98e;
+  --subject-sage-tag: #edf3e1;
+  --subject-sage-tag-ink: #4f6a22;
+
+  /* 창 뒤 어둡게 깔리는 막. 명세에 없는 값이라 기존 토큰에서 섞어 만든다. */
+  --scrim: color-mix(in srgb, var(--ink) 28%, transparent);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #17181c;
+  --surface: #1f2025;
+  --surface-2: #27282e;
+  --line: #2c2d33;
+  --line-2: #3a3b42;
+  --ink: #ecebe8;
+  --ink-2: #d4d3cf;
+  --sub: #a4a6ae;
+  --accent: #b9c2f5;
+  --accent-strong: #b9c2f5;
+  --nav-on: #2a2d42;
+  --timer-bg: #252839;
+  --check: #9eaaf0;
+  --accent-dot: #9eaaf0;
+  --btn: #ecebe8;
+  --btn-ink: #17181c;
+  --chip-on: #33374f;
+  --chip-on-line: #7f8ee6;
+  --chip-off: rgba(255, 255, 255, 0.04);
+  --nap-soft: #2b2640;
+  --nap-ink: #cdbdf5;
+  --nap-on: #6a4bb0;
+  --ok-soft: #22322d;
+  --ok-ink: #a5dccb;
+
+  --urgent-bg: #3a2621;
+  --urgent-ink: #f2b8a8;
+  --urgent-bar: #5a3a31;
+  --warn-bg: #363020;
+  --warn-ink: #ebcb86;
+  --warn-bar: #544a30;
+  --normal-bg: #27282e;
+  --normal-ink: #ecebe8;
+  --normal-bar: #3a3b42;
+  --defer-dot: #e8c77a;
+
+  --subject-rose-tag: #3a262a;
+  --subject-rose-tag-ink: #f2b5bf;
+  --subject-periwinkle-tag: #2a2d42;
+  --subject-periwinkle-tag-ink: #b9c2f5;
+  --subject-mint-tag: #22322d;
+  --subject-mint-tag-ink: #a5dccb;
+  --subject-butter-tag: #36301f;
+  --subject-butter-tag-ink: #ebcf8f;
+  --subject-lavender-tag: #2b2640;
+  --subject-lavender-tag-ink: #cdbdf5;
+  --subject-peach-tag: #3a2a20;
+  --subject-peach-tag-ink: #f5c3a0;
+  --subject-sky-tag: #1e2e3a;
+  --subject-sky-tag-ink: #a8d3f2;
+  --subject-sage-tag: #2a3220;
+  --subject-sage-tag-ink: #c8d9a6;
+
+  --scrim: color-mix(in srgb, var(--bg) 72%, transparent);
+}
+
+/* 과목 색: data-subject="rose" 를 단 요소 안에서 bg-s-dot, bg-s-tag, text-s-tag-ink 를 쓴다 */
+[data-subject="rose"] { --s-dot: var(--subject-rose-dot); --s-tag: var(--subject-rose-tag); --s-tag-ink: var(--subject-rose-tag-ink); }
+[data-subject="periwinkle"] { --s-dot: var(--subject-periwinkle-dot); --s-tag: var(--subject-periwinkle-tag); --s-tag-ink: var(--subject-periwinkle-tag-ink); }
+[data-subject="mint"] { --s-dot: var(--subject-mint-dot); --s-tag: var(--subject-mint-tag); --s-tag-ink: var(--subject-mint-tag-ink); }
+[data-subject="butter"] { --s-dot: var(--subject-butter-dot); --s-tag: var(--subject-butter-tag); --s-tag-ink: var(--subject-butter-tag-ink); }
+[data-subject="lavender"] { --s-dot: var(--subject-lavender-dot); --s-tag: var(--subject-lavender-tag); --s-tag-ink: var(--subject-lavender-tag-ink); }
+[data-subject="peach"] { --s-dot: var(--subject-peach-dot); --s-tag: var(--subject-peach-tag); --s-tag-ink: var(--subject-peach-tag-ink); }
+[data-subject="sky"] { --s-dot: var(--subject-sky-dot); --s-tag: var(--subject-sky-tag); --s-tag-ink: var(--subject-sky-tag-ink); }
+[data-subject="sage"] { --s-dot: var(--subject-sage-dot); --s-tag: var(--subject-sage-tag); --s-tag-ink: var(--subject-sage-tag-ink); }
+
+/* ───────── Tailwind 테마: 기본 팔레트를 지우고 위 토큰만 연결 ───────── */
+@theme {
+  --color-*: initial;
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --text-shadow-*: initial;
+
+  /* 굵기는 400, 500, 600만 (700 이상 금지) */
+  --font-weight-*: initial;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  /* 4장 레이아웃: 폰 < 744 ≤ 패드 세로 < 1024 ≤ 패드 가로 < 1280 ≤ PC */
+  --breakpoint-*: initial;
+  --breakpoint-pad: 744px;
+  --breakpoint-land: 1024px;
+  --breakpoint-pc: 1280px;
+
+  /* 3.4 글자 크기 (명세에 나온 크기만) */
+  --text-*: initial;
+  --text-10: 10px;
+  --text-11: 11px;
+  --text-12: 12px;
+  --text-13: 13px;
+  --text-14: 14px;
+  --text-15: 15px;
+  --text-18: 18px;
+  --text-20: 20px;
+  --text-22: 22px;
+  --text-26: 26px;
+  --text-28: 28px;
+  --text-36: 36px;
+  --text-40: 40px;
+  --text-44: 44px;
+  --text-72: 72px;
+  --text-120: 120px;
+
+  --tracking-*: initial;
+  --tracking-brand: -0.01em;
+  --tracking-title: -0.02em;
+  --tracking-num: -0.03em;
+
+  --leading-*: initial;
+  --leading-base: 1.55;
+
+  /* 3.5 모서리 */
+  --radius-*: initial;
+  --radius-key: 4px;
+  --radius-tag: 6px;
+  --radius-input: 10px;
+  --radius-dday-phone: 14px;
+  --radius-item: 16px;
+  --radius-card: 20px;
+
+  /* 3.5 요소 크기 */
+  --spacing-bar: 3px;
+  --spacing-dot: 6px;
+  --spacing-chip-dot: 7px;
+  --spacing-check: 17px;
+  --spacing-tag-phone: 18px;
+  --spacing-tag: 22px;
+  --spacing-condition: 26px;
+  --spacing-chip-phone: 36px;
+  --spacing-input: 38px;
+  --spacing-chip: 40px;
+  --spacing-touch: 44px;
+  --spacing-play-phone: 52px;
+  --spacing-play: 56px;
+  --spacing-tabbar: 56px;
+  --spacing-sidebar-collapsed: 64px;
+  --spacing-sidebar: 200px;
+  --spacing-left-col: 380px;
+
+  --container-*: initial;
+  --container-login: 360px;
+  --container-dialog: 480px;
+  --container-portrait: 720px;
+  --container-content: 1040px;
+
+  /* 3.5 움직임 */
+  --default-transition-duration: 150ms;
+  --default-transition-timing-function: ease;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-sub: var(--sub);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-nav-on: var(--nav-on);
+  --color-timer-bg: var(--timer-bg);
+  --color-check: var(--check);
+  --color-accent-dot: var(--accent-dot);
+  --color-btn: var(--btn);
+  --color-btn-ink: var(--btn-ink);
+  --color-chip-on: var(--chip-on);
+  --color-chip-on-line: var(--chip-on-line);
+  --color-chip-off: var(--chip-off);
+  --color-nap-soft: var(--nap-soft);
+  --color-nap-ink: var(--nap-ink);
+  --color-nap-on: var(--nap-on);
+  --color-ok-soft: var(--ok-soft);
+  --color-ok-ink: var(--ok-ink);
+
+  --color-urgent-bg: var(--urgent-bg);
+  --color-urgent-ink: var(--urgent-ink);
+  --color-urgent-bar: var(--urgent-bar);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-ink: var(--warn-ink);
+  --color-warn-bar: var(--warn-bar);
+  --color-normal-bg: var(--normal-bg);
+  --color-normal-ink: var(--normal-ink);
+  --color-normal-bar: var(--normal-bar);
+  --color-defer-dot: var(--defer-dot);
+
+  --color-s-dot: var(--s-dot);
+  --color-s-tag: var(--s-tag);
+  --color-s-tag-ink: var(--s-tag-ink);
+
+  --color-scrim: var(--scrim);
+
+  --font-sans: var(--font-plex-sans), "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
+}
+
+/* ───────── 기본 스타일 ───────── */
+@layer base {
+  html {
+    background: var(--bg);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    min-height: 100dvh;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-14);
+    font-weight: 400;
+    line-height: var(--leading-base);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--check);
+    outline-offset: 2px;
+  }
+
+  html:has(dialog[open]) {
+    overflow: hidden;
+  }
+
+  dialog::backdrop {
+    background: var(--scrim);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ───────── 공통 유틸리티 (3.4, 3.5) ───────── */
+
+/* 숫자: Plex Mono + 고정 폭 숫자 */
+@utility num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 본문 영역 안쪽 여백. 폰·패드 세로는 하단 탭과 안전 영역만큼 더한다 */
+@utility page-area {
+  padding: 32px 20px calc(28px + var(--spacing-tabbar) + env(safe-area-inset-bottom));
+
+  @media (width >= 744px) {
+    padding: 40px 32px calc(56px + var(--spacing-tabbar) + env(safe-area-inset-bottom));
+  }
+  @media (width >= 1024px) {
+    padding: 40px 32px 56px;
+  }
+  @media (width >= 1280px) {
+    padding: 48px 56px 72px;
+  }
+}
+
+/* 카드 사이 간격: PC·패드 32px, 폰 24px */
+@utility card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+
+  @media (width >= 744px) {
+    gap: 32px;
+  }
+}
+
+/* 카드: 테두리·그림자 없이 흰 바탕만 */
+@utility card {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  padding: 22px 18px;
+
+  @media (width >= 744px) {
+    padding: 28px;
+  }
+}
+
+/* 페이지 제목: 22 / 22 / 20px, 600, 자간 -0.02em */
+@utility page-title {
+  font-size: var(--text-20);
+  font-weight: 600;
+  letter-spacing: var(--tracking-title);
+  line-height: 1.3;
+
+  @media (width >= 744px) {
+    font-size: var(--text-22);
+  }
+}
+
+/* 입력칸과 버튼 높이: 마우스 38px, 터치 44px */
+@utility control-h {
+  min-height: var(--spacing-input);
+
+  @media (pointer: coarse) {
+    min-height: var(--spacing-touch);
+  }
+}
+
+/* 터치 기기에서 누르는 영역 44×44px 이상 */
+@utility hit {
+  @media (pointer: coarse) {
+    min-width: var(--spacing-touch);
+    min-height: var(--spacing-touch);
+  }
+}
+
+/* 하단 탭 높이 + 아이폰·아이패드 안전 영역 */
+@utility tabbar {
+  height: calc(var(--spacing-tabbar) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 알림 위치: 폰·패드 세로는 하단 탭 위, 사이드바 레이아웃은 화면 아래 */
+@utility toast-offset {
+  bottom: calc(var(--spacing-tabbar) + env(safe-area-inset-bottom) + 12px);
+
+  @media (width >= 1024px) {
+    bottom: 24px;
+  }
+}
+
+/* 입력 창 (4.2): 폰은 아래에서 올라오는 시트, 패드·PC 는 가운데 창(최대 480px) */
+@utility dialog-panel {
+  position: fixed;
+  inset: auto 0 0 0;
+  margin: 0;
+  width: 100%;
+  max-width: 100%;
+  max-height: 92dvh;
+  border: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+
+  @media (width >= 744px) {
+    inset: 0;
+    margin: auto;
+    width: calc(100% - 64px);
+    max-width: var(--container-dialog);
+    height: fit-content;
+    border-radius: var(--radius-card);
+  }
+}
+
+/* 하단 탭의 더보기처럼 늘 아래에서 올라오는 시트 */
+@utility dialog-sheet {
+  position: fixed;
+  inset: auto 0 0 0;
+  margin: 0 auto;
+  width: 100%;
+  max-width: var(--container-portrait);
+  max-height: 92dvh;
+  border: 0;
+  padding: 0;
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+}
+
+/* 단축키 표의 키 (4.3): Plex Mono 10px, --surface-2 바탕, 모서리 4px, 안쪽 여백 1px 5px */
+@utility key-chip {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--text-10);
+  line-height: 1.5;
+  padding: 1px 5px;
+  border-radius: var(--radius-key);
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
