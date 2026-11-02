@@ -2,7 +2,7 @@
  * 가짜 백엔드용 스키마 정보 (supabase/telos.sql 을 흉내 낸다).
  * 개발 데모와 E2E 테스트에서만 쓴다. 배포 빌드에는 들어가지 않는다.
  */
-import type { TableName } from "../database.types";
+import { TRASHABLE_TABLES, type TableName } from "../database.types";
 
 type Row = Record<string, unknown>;
 
@@ -12,16 +12,14 @@ export const TABLE_DEFAULTS: Record<TableName, Row> = {
     theme: "system",
     day_start_hour: 6,
     sem1_start: "03-01",
-    sem1_end: "07-31",
     sem2_start: "08-01",
-    sem2_end: "02-29",
     entry_year: null,
     reviewed_term: null,
     sidebar_collapsed: false,
     last_backup_at: null,
   },
   subjects: { sort_order: 0, kind: "school", term: null, archived_at: null },
-  units: { sort_order: 0, status: "todo" },
+  units: { sort_order: 0 },
   timetables: { default_for: "none", sort_order: 0 },
   timetable_slots: {},
   holidays: {},
@@ -83,27 +81,8 @@ export const TABLE_DEFAULTS: Record<TableName, Row> = {
   maintenance_runs: {},
 };
 
-/** 휴지통 열이 있는 테이블 */
-export const HAS_TRASH = new Set<TableName>([
-  "subjects",
-  "units",
-  "timetables",
-  "timetable_slots",
-  "holidays",
-  "date_timetables",
-  "recurrences",
-  "ddays",
-  "exam_subjects",
-  "roadmap_items",
-  "tasks",
-  "timer_sessions",
-  "reflections",
-  "mock_rounds",
-  "wrong_notes",
-  "wrong_note_photos",
-  "flash_decks",
-  "flash_cards",
-]);
+/** 휴지통 열이 있는 테이블 (앱 전체에서 TRASHABLE_TABLES 하나만 쓴다) */
+export const HAS_TRASH = new Set<TableName>(TRASHABLE_TABLES);
 
 type Unique = { cols: string[]; when?: (row: Row) => boolean };
 const active = (row: Row) => row.deleted_at == null;
@@ -153,23 +132,4 @@ export const FOREIGN_KEYS: readonly [TableName, string, TableName, "cascade" | "
 ];
 
 /** 휴지통에서 완전 삭제하는 순서 (자식 먼저) */
-export const PURGE_ORDER: readonly TableName[] = [
-  "wrong_note_photos",
-  "wrong_notes",
-  "flash_cards",
-  "flash_decks",
-  "tasks",
-  "roadmap_items",
-  "exam_subjects",
-  "recurrences",
-  "ddays",
-  "timer_sessions",
-  "reflections",
-  "units",
-  "mock_rounds",
-  "date_timetables",
-  "timetable_slots",
-  "timetables",
-  "holidays",
-  "subjects",
-];
+export const PURGE_ORDER: readonly TableName[] = TRASHABLE_TABLES;

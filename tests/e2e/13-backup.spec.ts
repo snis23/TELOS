@@ -44,7 +44,7 @@ test("13. 백업: JSON 내려받기 → 기록 바꾸기 → JSON 복원(확인 
   // 잘못된 파일은 거절
   await page.goto("settings/");
   await page.getByTestId("restore-input").setInputFiles({ name: "x.json", mimeType: "application/json", buffer: Buffer.from('{"app":"other"}') });
-  await expect(page.getByText("Telos 백업 파일이 아니에요")).toBeVisible();
+  await expect(page.getByText("TELOS 백업 파일이 아니에요")).toBeVisible();
 });
 
 test("백업 안내: 마지막 백업 후 30일이 지나면 오늘 화면에 보인다", async ({ page }) => {

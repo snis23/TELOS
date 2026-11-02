@@ -264,6 +264,16 @@ export function useTimer(studyDate: string, now: Date) {
     [studying, begin],
   );
 
+  /** 이 과목으로 바로 측정 시작 (오늘 화면의 지금 할 일). 이미 그 과목을 재는 중이면 그대로 */
+  const startSubject = useCallback(
+    (subjectId: string) => {
+      setSelected(subjectId);
+      writeLastSubject(subjectId);
+      if (studying?.subject_id !== subjectId) begin("study", subjectId);
+    },
+    [studying, begin],
+  );
+
   /** 쪽잠 시작: 공부 기록을 끝내고(과목은 기억) 쪽잠을 시작 */
   const startNap = useCallback(() => {
     if (studying?.subject_id) writeLastSubject(studying.subject_id);
@@ -326,6 +336,7 @@ export function useTimer(studyDate: string, now: Date) {
     nap,
     toggle,
     selectSubject,
+    startSubject,
     toggleNap,
     startNap,
     endNap,

@@ -1,11 +1,22 @@
 -- ============================================================================
--- Telos 데이터베이스 전체 설정 (Phase 1~6 + 1차 수정)
+-- TELOS 데이터베이스 전체 설정
 --
 -- 사용법: Supabase 대시보드 > SQL Editor > New query 에 이 파일 전체를 붙여 넣고 Run.
 --   - 여러 번 실행해도 안전하다. 이미 있는 테이블·데이터는 그대로 두고, 함수·정책은 새로 만든다.
---   - 이전 버전으로 만든 데이터베이스에 실행하면 2.99 의 업그레이드가 새 구조로 바꾼다
---     (성적·생기부·목표 로드맵·범위 분배·회독 표는 지우고, 과목은 모의고사/내신으로 나눈다).
+--   - 이전 버전 DB 에 실행하면 3장 "버전별 올리기"가 차례대로 새 구조로 바꾼다.
+--     어디까지 올렸는지는 schema_migrations 표에 남는다.
 --   - 매일 자동 작업(pg_cron)은 확장을 먼저 켜야 등록된다. 꺼져 있으면 맨 아래에서 안내만 하고 넘어간다.
+--
+-- 버전
+--   1: Phase 1~6 처음 버전
+--   2: 1차 수정 (모의고사/내신 과목, 시험 대비 로드맵, 하루 코멘트, 성적 삭제)
+--   3: 2차 수정 (아침 자습 시간표, 모의고사 과목 순서, 안 쓰는 칸 정리)
+--
+-- 고칠 때 규칙 (꼬이지 않게)
+--   - 2장 테이블은 항상 "최신 모양"으로 쓴다. 새로 설치하면 이것만으로 끝난다.
+--   - 이미 있는 DB 를 바꾸는 문장은 3장에 새 버전 블록으로만 추가한다. 지난 버전 블록은 고치지 않는다.
+--   - 새 버전을 만들면 0장의 LATEST 와 맨 아래 확인 값도 함께 올린다.
+--   - supabase/telos.test.ts 가 "새로 설치한 DB = 이전 버전에서 올린 DB" 인지 확인한다.
 --
 -- 규칙 (spec.md 9장)
 --   - 모든 테이블: id(uuid), user_id(기본값 auth.uid()), created_at, updated_at, RLS(user_id = auth.uid())
@@ -14,6 +25,40 @@
 --   - 시각은 timestamptz(UTC), 날짜 구분은 study_date(하루 기준 시각 적용, 한국 시간)
 --   - start_min, end_min: 하루 기준 시각부터 센 분(0~1440), 10의 배수
 -- ============================================================================
+
+
+-- ============================================================================
+-- 0. 버전 기록: 테이블을 만들기 전에 지금 DB 가 어느 버전인지 적어 둔다
+-- ============================================================================
+
+create table if not exists public.schema_migrations (
+  version integer primary key,
+  name text not null,
+  applied_at timestamptz not null default now()
+);
+alter table public.schema_migrations enable row level security;
+revoke all on table public.schema_migrations from anon, authenticated;
+
+do $$
+declare
+  latest constant integer := 3;  -- LATEST: 새 버전을 만들면 함께 올린다
+begin
+  if exists (select 1 from public.schema_migrations) then
+    return;
+  end if;
+  if to_regclass('public.profiles') is null then
+    -- 새로 설치: 2장이 처음부터 최신 모양으로 만든다
+    insert into public.schema_migrations (version, name) values (latest, '새로 설치');
+  elsif exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'entry_year'
+  ) then
+    insert into public.schema_migrations (version, name) values (2, '1차 수정 (버전 기록 전에 설치)');
+  else
+    insert into public.schema_migrations (version, name) values (1, 'Phase 1~6 (버전 기록 전에 설치)');
+  end if;
+end;
+$$;
 
 
 -- ============================================================================
@@ -42,11 +87,9 @@ create table if not exists public.profiles (
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   theme text not null default 'system',
   day_start_hour smallint not null default 6,
-  -- 학기 기간 (MM-DD). 2학기 끝 02-29 는 "2월 말일"로 읽는다
+  -- 학기 시작일 (MM-DD). 1학기는 2학기 시작 전날까지, 2학기는 다음 해 1학기 시작 전날까지
   sem1_start text not null default '03-01',
-  sem1_end text not null default '07-31',
   sem2_start text not null default '08-01',
-  sem2_end text not null default '02-29',
   -- 입학 연도 (학년 계산용) / 마지막으로 내신 과목을 정리한 학기 ("2-1" = 2학년 1학기)
   entry_year smallint,
   reviewed_term text,
@@ -61,14 +104,12 @@ create table if not exists public.profiles (
   constraint profiles_reviewed_term_check check (reviewed_term is null or reviewed_term ~ '^[1-3]-[12]$'),
   constraint profiles_semester_check check (
     sem1_start ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
-    and sem1_end ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
     and sem2_start ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
-    and sem2_end ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
   )
 );
 
 -- 2.2 subjects: 과목 ----------------------------------------------------------
---   kind = 'mock': 모의고사 과목 (국어·수학·영어·한국사·통합과학·통합사회, 고정)
+--   kind = 'mock': 모의고사 과목 (국어·수학·영어·한국사·통합사회·통합과학, 고정)
 --   kind = 'school': 내신 과목. term 은 처음 배운 학기("1-2"), 학기가 끝나면 보관(archived_at)한다.
 --   보관한 과목은 고르는 목록에서만 빠지고 기록(오답·공부 시간·로드맵)은 그대로 남는다.
 create table if not exists public.subjects (
@@ -99,13 +140,11 @@ create table if not exists public.units (
   subject_id uuid not null references public.subjects (id) on delete cascade,
   name text not null,
   sort_order integer not null default 0,
-  status text not null default 'todo',
   deleted_at timestamptz,
   delete_batch_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint units_name_check check (name = btrim(name) and char_length(name) between 1 and 40),
-  constraint units_status_check check (status in ('todo', 'doing', 'done'))
+  constraint units_name_check check (name = btrim(name) and char_length(name) between 1 and 40)
 );
 create index if not exists units_subject_idx on public.units (subject_id);
 
@@ -501,35 +540,32 @@ create table if not exists public.maintenance_runs (
 
 
 -- ============================================================================
--- 2.99 이전 버전에서 올리기
---   처음 설치하면 아무것도 바뀌지 않는다. 이전 버전 DB 에 실행하면 새 구조로 바꾼다.
---   여러 번 실행해도 결과가 같다. 데이터를 옮기는 부분은 옛 열(profiles.auto_range_tasks)이
---   남아 있을 때 한 번만 한다.
+-- 3. 버전별 올리기 (이미 있는 DB 만 바뀐다. 새로 설치하면 모두 건너뛴다)
+--    블록마다 "지금 버전 < N" 일 때 한 번만 실행하고 schema_migrations 에 N 을 남긴다.
+--    지난 블록은 고치지 않는다. 바꿀 것이 생기면 맨 아래에 새 블록을 더한다.
 -- ============================================================================
 
--- (1) 새 열
-alter table public.profiles add column if not exists entry_year smallint;
-alter table public.profiles add column if not exists reviewed_term text;
-alter table public.subjects add column if not exists kind text not null default 'school';
-alter table public.subjects add column if not exists term text;
-alter table public.subjects add column if not exists archived_at timestamptz;
-alter table public.ddays add column if not exists exam_kind text;
-alter table public.tasks add column if not exists roadmap_item_id uuid references public.roadmap_items (id) on delete set null;
-alter table public.reflections add column if not exists comment text not null default '';
-
--- (2) 옛 데이터 옮기기 (한 번만)
-do $$
+-- 3.1 버전 2: 1차 수정 -----------------------------------------------------------
+--   과목을 모의고사/내신으로 나누고, 회고 → 코멘트, 범위 분배·회독 → 시험 과목, 성적 표 삭제
+do $v2$
 declare
   h integer;
   r record;
   tid uuid;
 begin
-  if not exists (
-    select 1 from information_schema.columns
-    where table_schema = 'public' and table_name = 'profiles' and column_name = 'auto_range_tasks'
-  ) then
+  if (select max(version) from public.schema_migrations) >= 2 then
     return;
   end if;
+
+  -- 새 열
+  alter table public.profiles add column if not exists entry_year smallint;
+  alter table public.profiles add column if not exists reviewed_term text;
+  alter table public.subjects add column if not exists kind text not null default 'school';
+  alter table public.subjects add column if not exists term text;
+  alter table public.subjects add column if not exists archived_at timestamptz;
+  alter table public.ddays add column if not exists exam_kind text;
+  alter table public.tasks add column if not exists roadmap_item_id uuid references public.roadmap_items (id) on delete set null;
+  alter table public.reflections add column if not exists comment text not null default '';
 
   -- 과목: 과학·사회 → 통합과학·통합사회, 모의고사 6과목은 mock, 탐구1·2는 보관, 나머지는 내신
   update public.subjects s set name = '통합과학'
@@ -604,78 +640,140 @@ begin
     end if;
     tid := null;
   end loop;
+
+  -- 옛 열·표 지우기, 제약 다시 걸기
+  alter table public.profiles drop column if exists auto_range_tasks;
+  alter table public.profiles drop constraint if exists profiles_entry_year_check;
+  alter table public.profiles add constraint profiles_entry_year_check
+    check (entry_year is null or entry_year between 2000 and 2100);
+  alter table public.profiles drop constraint if exists profiles_reviewed_term_check;
+  alter table public.profiles add constraint profiles_reviewed_term_check
+    check (reviewed_term is null or reviewed_term ~ '^[1-3]-[12]$');
+
+  alter table public.subjects drop column if exists show_in_school_notes;
+  alter table public.subjects drop column if exists show_in_mock_notes;
+  alter table public.subjects drop column if exists mock_max_score;
+  alter table public.subjects drop column if exists has_percentile;
+  alter table public.subjects drop column if exists hidden_at;
+  alter table public.subjects drop constraint if exists subjects_kind_check;
+  alter table public.subjects add constraint subjects_kind_check check (kind in ('mock', 'school'));
+  alter table public.subjects drop constraint if exists subjects_term_check;
+  alter table public.subjects add constraint subjects_term_check check (term is null or term ~ '^[1-3]-[12]$');
+  drop index if exists public.subjects_name_key;
+
+  alter table public.ddays drop column if exists review_days;
+  alter table public.ddays drop column if exists off_weekdays;
+  alter table public.ddays drop constraint if exists ddays_exam_kind_check;
+  alter table public.ddays add constraint ddays_exam_kind_check
+    check (exam_kind is null or exam_kind in ('school', 'mock', 'other'));
+
+  alter table public.tasks drop column if exists range_item_id;
+  alter table public.tasks drop column if exists range_start_no;
+  alter table public.tasks drop column if exists range_end_no;
+  alter table public.tasks drop column if exists goal_id;
+  alter table public.tasks drop constraint if exists tasks_source_check;
+  alter table public.tasks add constraint tasks_source_check check (source in ('manual', 'recurrence', 'roadmap'));
+  alter table public.tasks drop constraint if exists tasks_title_check;
+  alter table public.tasks add constraint tasks_title_check
+    check (title = btrim(title) and char_length(title) between 1 and 80);
+
+  alter table public.reflections drop column if exists good;
+  alter table public.reflections drop column if exists bad;
+  alter table public.reflections drop column if exists tomorrow;
+  alter table public.reflections drop column if exists condition;
+  alter table public.reflections drop constraint if exists reflections_comment_check;
+  alter table public.reflections add constraint reflections_comment_check check (char_length(comment) <= 500);
+
+  drop table if exists
+    public.review_checks, public.range_items, public.exam_subject_dates, public.goals,
+    public.school_grades, public.mock_scores, public.targets, public.records
+    cascade;
+
+  insert into public.schema_migrations (version, name) values (2, '1차 수정');
 end;
-$$;
+$v2$;
 
--- (3) 옛 열·표 지우기, 제약 다시 걸기
-alter table public.profiles drop column if exists auto_range_tasks;
-alter table public.profiles drop constraint if exists profiles_entry_year_check;
-alter table public.profiles add constraint profiles_entry_year_check
-  check (entry_year is null or entry_year between 2000 and 2100);
-alter table public.profiles drop constraint if exists profiles_reviewed_term_check;
-alter table public.profiles add constraint profiles_reviewed_term_check
-  check (reviewed_term is null or reviewed_term ~ '^[1-3]-[12]$');
+-- 3.2 버전 3: 2차 수정 -----------------------------------------------------------
+--   안 쓰는 칸 정리, 모의고사 과목 순서(통합사회 → 통합과학),
+--   평일 입실·조례 → 아침 자습(07:30~08:30), 주말 청소·아침 식사 삭제
+do $v3$
+declare
+  r record;
+  tid uuid;
+begin
+  if (select max(version) from public.schema_migrations) >= 3 then
+    return;
+  end if;
 
-alter table public.subjects drop column if exists show_in_school_notes;
-alter table public.subjects drop column if exists show_in_mock_notes;
-alter table public.subjects drop column if exists mock_max_score;
-alter table public.subjects drop column if exists has_percentile;
-alter table public.subjects drop column if exists hidden_at;
-alter table public.subjects drop constraint if exists subjects_kind_check;
-alter table public.subjects add constraint subjects_kind_check check (kind in ('mock', 'school'));
-alter table public.subjects drop constraint if exists subjects_term_check;
-alter table public.subjects add constraint subjects_term_check check (term is null or term ~ '^[1-3]-[12]$');
+  -- 안 쓰는 칸: 단원 상태(진행표가 로드맵으로 바뀜), 학기 끝 날짜(다음 학기 시작으로 계산)
+  alter table public.units drop column if exists status;
+  alter table public.profiles drop constraint if exists profiles_semester_check;
+  alter table public.profiles drop column if exists sem1_end;
+  alter table public.profiles drop column if exists sem2_end;
+  alter table public.profiles add constraint profiles_semester_check check (
+    sem1_start ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
+    and sem2_start ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
+  );
+
+  update public.subjects
+  set sort_order = case name
+    when '국어' then 0 when '수학' then 1 when '영어' then 2
+    when '한국사' then 3 when '통합사회' then 4 when '통합과학' then 5
+  end
+  where kind = 'mock' and name in ('국어', '수학', '영어', '한국사', '통합사회', '통합과학');
+
+  for r in select user_id, day_start_hour from public.profiles loop
+    select id into tid from public.timetables
+    where user_id = r.user_id and default_for = 'weekday' and deleted_at is null;
+    if tid is not null then
+      delete from public.timetable_slots where timetable_id = tid and name in ('입실', '조례');
+      insert into public.timetable_slots (user_id, timetable_id, name, category, start_min, end_min)
+      select r.user_id, tid, '아침 자습', 'study',
+             ((450 - r.day_start_hour * 60) + 1440) % 1440,
+             ((450 - r.day_start_hour * 60) + 1440) % 1440 + 60
+      where not exists (
+        select 1 from public.timetable_slots x where x.timetable_id = tid and x.name = '아침 자습' and x.deleted_at is null
+      );
+    end if;
+    tid := null;
+    select id into tid from public.timetables
+    where user_id = r.user_id and default_for = 'weekend' and deleted_at is null;
+    if tid is not null then
+      delete from public.timetable_slots where timetable_id = tid and name in ('청소', '아침 식사');
+    end if;
+    tid := null;
+  end loop;
+
+  insert into public.schema_migrations (version, name) values (3, '2차 수정');
+end;
+$v3$;
+
+-- 3.9 올리기로 생긴 열을 쓰는 인덱스 (새로 설치·올리기 모두 여기서 만든다) -----------
 -- 같은 종류 안에서, 보관하지 않은 과목끼리만 이름이 겹치면 안 된다
-drop index if exists public.subjects_name_key;
 create unique index if not exists subjects_active_name_key
   on public.subjects (user_id, kind, name) where deleted_at is null and archived_at is null;
-
-alter table public.ddays drop column if exists review_days;
-alter table public.ddays drop column if exists off_weekdays;
-alter table public.ddays drop constraint if exists ddays_exam_kind_check;
-alter table public.ddays add constraint ddays_exam_kind_check
-  check (exam_kind is null or exam_kind in ('school', 'mock', 'other'));
-
-alter table public.tasks drop column if exists range_item_id;
-alter table public.tasks drop column if exists range_start_no;
-alter table public.tasks drop column if exists range_end_no;
-alter table public.tasks drop column if exists goal_id;
-alter table public.tasks drop constraint if exists tasks_source_check;
-alter table public.tasks add constraint tasks_source_check check (source in ('manual', 'recurrence', 'roadmap'));
-alter table public.tasks drop constraint if exists tasks_title_check;
-alter table public.tasks add constraint tasks_title_check
-  check (title = btrim(title) and char_length(title) between 1 and 80);
 -- 로드맵 칸 하나는 할 일 하나로만 넣는다
 create unique index if not exists tasks_roadmap_item_key
   on public.tasks (roadmap_item_id) where roadmap_item_id is not null and deleted_at is null;
 
-alter table public.reflections drop column if exists good;
-alter table public.reflections drop column if exists bad;
-alter table public.reflections drop column if exists tomorrow;
-alter table public.reflections drop column if exists condition;
-alter table public.reflections drop constraint if exists reflections_comment_check;
-alter table public.reflections add constraint reflections_comment_check check (char_length(comment) <= 500);
-
-drop table if exists
-  public.review_checks, public.range_items, public.exam_subject_dates, public.goals,
-  public.school_grades, public.mock_scores, public.targets, public.records
-  cascade;
-
 
 -- ============================================================================
--- 3. RLS, 권한, updated_at 트리거, 실시간 동기화
+-- 4. RLS, 권한, updated_at 트리거, 실시간 동기화
 -- ============================================================================
 
+-- user_id 열이 있는 모든 표에 같은 규칙을 건다 (표 목록을 따로 관리하지 않는다)
 do $$
 declare
   t text;
 begin
-  foreach t in array array[
-    'profiles', 'subjects', 'units', 'timetables', 'timetable_slots', 'holidays', 'date_timetables',
-    'recurrences', 'ddays', 'exam_subjects', 'roadmap_items', 'tasks',
-    'task_deferrals', 'timer_sessions', 'daily_stats', 'reflections', 'mock_rounds', 'wrong_notes',
-    'wrong_note_photos', 'flash_decks', 'flash_cards', 'pending_file_deletions'
-  ] loop
+  for t in
+    select c.table_name
+    from information_schema.columns c
+    join information_schema.tables tb
+      on tb.table_schema = c.table_schema and tb.table_name = c.table_name and tb.table_type = 'BASE TABLE'
+    where c.table_schema = 'public' and c.column_name = 'user_id'
+    order by c.table_name
+  loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists %I on public.%I', t || '_own', t);
     execute format(
@@ -710,7 +808,7 @@ grant select on table public.maintenance_runs to authenticated;
 
 
 -- ============================================================================
--- 4. 트리거: 오답 사진 (최대 5장, 지우면 파일 삭제 대기열에)
+-- 5. 트리거: 오답 사진 (최대 5장, 지우면 파일 삭제 대기열에)
 -- ============================================================================
 
 create or replace function public.wrong_note_photos_limit()
@@ -754,11 +852,11 @@ create trigger wrong_note_photos_enqueue_file
 
 
 -- ============================================================================
--- 5. 앱에서 부르는 함수 (모두 로그인한 사용자 권한으로 실행, RLS 적용)
+-- 6. 앱에서 부르는 함수 (모두 로그인한 사용자 권한으로 실행, RLS 적용)
 -- ============================================================================
 
--- 5.1 bootstrap_user(): 처음 로그인하면 기본값을 만든다. 몇 번 불러도 결과가 같다 ----
---   모의고사 과목 6개(국어·수학·영어·한국사·통합과학·통합사회)는 고정이라, 빠진 것이 있으면 부를 때마다 채운다.
+-- 6.1 bootstrap_user(): 처음 로그인하면 기본값을 만든다. 몇 번 불러도 결과가 같다 ----
+--   모의고사 과목 6개(국어·수학·영어·한국사·통합사회·통합과학)는 고정이라, 빠진 것이 있으면 부를 때마다 채운다.
 --   내신 과목은 사용자가 학기마다 정리한다 (새 학기 정리 창).
 --   기본 시간표 (5.12), 2026~2028 공휴일 (5.10)
 create or replace function public.bootstrap_user()
@@ -783,7 +881,7 @@ begin
   select uid, m.name, m.color_key, m.sort_order, 'mock'
   from (values
     ('국어', 'rose', 0), ('수학', 'periwinkle', 1), ('영어', 'mint', 2),
-    ('한국사', 'peach', 3), ('통합과학', 'butter', 4), ('통합사회', 'lavender', 5)
+    ('한국사', 'peach', 3), ('통합사회', 'lavender', 4), ('통합과학', 'butter', 5)
   ) as m (name, color_key, sort_order)
   where not exists (
     select 1 from public.subjects s
@@ -804,7 +902,7 @@ begin
            ((s.start_clock - h * 60) + 1440) % 1440,
            ((s.start_clock - h * 60) + 1440) % 1440 + (s.end_clock - s.start_clock)
     from (values
-      ('기상', 'life', 390, 400), ('입실', 'life', 480, 490), ('조례', 'life', 490, 510),
+      ('기상', 'life', 390, 400), ('아침 자습', 'study', 450, 510),
       ('1교시', 'class', 510, 560), ('2교시', 'class', 570, 620), ('3교시', 'class', 630, 680),
       ('4교시', 'class', 690, 740), ('점심 식사', 'meal', 740, 810), ('5교시', 'class', 810, 860),
       ('6교시', 'class', 870, 920), ('7교시', 'class', 930, 980), ('청소', 'life', 980, 1000),
@@ -819,9 +917,9 @@ begin
            ((s.start_clock - h * 60) + 1440) % 1440,
            ((s.start_clock - h * 60) + 1440) % 1440 + (s.end_clock - s.start_clock)
     from (values
-      ('기상', 'life', 420, 430), ('아침 식사', 'meal', 450, 520), ('자습 1차시', 'study', 520, 630),
+      ('기상', 'life', 420, 430), ('자습 1차시', 'study', 520, 630),
       ('자습 2차시', 'study', 630, 730), ('점심 식사', 'meal', 730, 800), ('자습 3차시', 'study', 800, 900),
-      ('자습 4차시', 'study', 900, 1000), ('청소', 'life', 1000, 1020), ('자습 5차시', 'study', 1020, 1080),
+      ('자습 4차시', 'study', 900, 1000), ('자습 5차시', 'study', 1020, 1080),
       ('저녁 식사', 'meal', 1080, 1140), ('자습 6차시', 'study', 1140, 1200), ('자습 7차시', 'study', 1200, 1260),
       ('자습 8차시', 'study', 1260, 1320), ('자습 9차시', 'study', 1320, 1380), ('점호', 'life', 1350, 1360),
       ('자습 10차시', 'study', 1380, 1440), ('자습 11차시', 'study', 0, 60), ('자습 12차시', 'study', 60, 120)
@@ -857,7 +955,7 @@ begin
 end;
 $$;
 
--- 5.2 reorder_rows(table, ids): 끌어서 바꾼 순서를 한 번에 저장 -------------------
+-- 6.2 reorder_rows(table, ids): 끌어서 바꾼 순서를 한 번에 저장 -------------------
 create or replace function public.reorder_rows(p_table text, p_ids uuid[])
 returns void
 language plpgsql
@@ -883,7 +981,22 @@ begin
 end;
 $$;
 
--- 5.3 휴지통: trash_item / restore_batch / purge_batch (9.4) -------------------
+-- 6.3 휴지통: telos_trash_tables / trash_item / restore_batch / purge_batch (9.4) ----
+--   휴지통을 쓰는 표 목록은 telos_trash_tables() 한 곳에만 둔다 (지울 때 순서: 자식 먼저).
+--   앱의 TRASHABLE_TABLES(src/lib/supabase/database.types.ts)와 같아야 한다 (테스트가 확인한다).
+create or replace function public.telos_trash_tables()
+returns text[]
+language sql
+immutable
+set search_path = ''
+as $$
+  select array[
+    'wrong_note_photos', 'wrong_notes', 'flash_cards', 'flash_decks', 'tasks', 'roadmap_items',
+    'exam_subjects', 'recurrences', 'ddays', 'timer_sessions', 'reflections', 'units', 'mock_rounds',
+    'date_timetables', 'timetable_slots', 'timetables', 'holidays', 'subjects'
+  ]::text[]
+$$;
+
 --   함께 지우는 것: 과목 → 오답·단원·시험 과목·로드맵 칸 / 단원 → 오답 / 회차 → 오답
 --                   시험 → 시험 과목·로드맵 칸 / 카드 묶음 → 카드 / 시간표 → 항목
 create or replace function public.trash_item(p_table text, p_id uuid)
@@ -896,11 +1009,7 @@ declare
   uid uuid := auth.uid();
   ts timestamptz := now();
 begin
-  if p_table not in (
-    'subjects', 'units', 'timetables', 'timetable_slots', 'holidays', 'date_timetables', 'recurrences',
-    'ddays', 'exam_subjects', 'roadmap_items', 'tasks', 'timer_sessions', 'reflections',
-    'mock_rounds', 'wrong_notes', 'wrong_note_photos', 'flash_decks', 'flash_cards'
-  ) then
+  if not (p_table = any (public.telos_trash_tables())) then
     raise exception 'trash not allowed: %', p_table using errcode = '22023';
   end if;
 
@@ -950,11 +1059,7 @@ as $$
 declare
   t text;
 begin
-  foreach t in array array[
-    'subjects', 'units', 'timetables', 'timetable_slots', 'holidays', 'date_timetables', 'recurrences',
-    'ddays', 'exam_subjects', 'roadmap_items', 'tasks', 'timer_sessions', 'reflections',
-    'mock_rounds', 'wrong_notes', 'wrong_note_photos', 'flash_decks', 'flash_cards'
-  ] loop
+  foreach t in array public.telos_trash_tables() loop
     execute format(
       'update public.%I set deleted_at = null, delete_batch_id = null '
       'where delete_batch_id = $1 and user_id = (select auth.uid())',
@@ -973,11 +1078,7 @@ as $$
 declare
   t text;
 begin
-  foreach t in array array[
-    'wrong_note_photos', 'wrong_notes', 'flash_cards', 'flash_decks', 'tasks', 'roadmap_items',
-    'exam_subjects', 'recurrences', 'ddays', 'timer_sessions', 'reflections', 'units', 'mock_rounds',
-    'date_timetables', 'timetable_slots', 'timetables', 'holidays', 'subjects'
-  ] loop
+  foreach t in array public.telos_trash_tables() loop
     execute format(
       'delete from public.%I where delete_batch_id = $1 and deleted_at is not null and user_id = (select auth.uid())',
       t
@@ -986,7 +1087,7 @@ begin
 end;
 $$;
 
--- 5.4 미루기: defer_tasks / undefer_tasks (5.6 넘기기·되돌리기·오늘로 가져오기) ---
+-- 6.4 미루기: defer_tasks / undefer_tasks (5.6 넘기기·되돌리기·오늘로 가져오기) ---
 create or replace function public.defer_tasks(p_ids uuid[], p_to date)
 returns setof uuid
 language plpgsql
@@ -1039,7 +1140,7 @@ begin
 end;
 $$;
 
--- 5.5 하루 통계: compute_daily_stats / refresh_daily_stats ----------------------
+-- 6.5 하루 통계: compute_daily_stats / refresh_daily_stats ----------------------
 --   하루 = [그날 하루 기준 시각, 다음 날 하루 기준 시각) 한국 시간. 경계를 넘긴 기록은 나눠 센다.
 --   실행률 분모 = 그날 할 일 + 그날에서 다른 날로 넘긴 할 일 (8.1)
 create or replace function public.compute_daily_stats(p_user uuid, p_date date)
@@ -1132,7 +1233,7 @@ begin
 end;
 $$;
 
--- 5.6 restore_backup(json): 백업 파일로 모든 기록을 바꾼다 (한 번에, 실패하면 아무것도 안 바뀜)
+-- 6.6 restore_backup(json): 백업 파일로 모든 기록을 바꾼다 (한 번에, 실패하면 아무것도 안 바뀜)
 --   지금 데이터를 지우고 백업 내용을 넣는다. 사진 파일은 지우지 않는다.
 create or replace function public.restore_backup(p_backup jsonb)
 returns void
@@ -1143,16 +1244,9 @@ as $$
 declare
   uid uuid := auth.uid();
   t text;
-  delete_order text[] := array[
-    'wrong_note_photos', 'wrong_notes', 'flash_cards', 'flash_decks', 'task_deferrals', 'tasks',
-    'roadmap_items', 'exam_subjects', 'recurrences', 'ddays', 'timer_sessions', 'daily_stats', 'reflections',
-    'units', 'mock_rounds', 'date_timetables', 'timetable_slots', 'timetables', 'holidays', 'subjects'
-  ];
-  insert_order text[] := array[
-    'subjects', 'holidays', 'timetables', 'timetable_slots', 'date_timetables', 'mock_rounds', 'units',
-    'reflections', 'daily_stats', 'timer_sessions', 'ddays', 'exam_subjects', 'roadmap_items', 'recurrences',
-    'tasks', 'task_deferrals', 'flash_decks', 'flash_cards', 'wrong_notes', 'wrong_note_photos'
-  ];
+  -- 지울 때는 자식 먼저, 넣을 때는 그 반대 순서 (앱의 BACKUP_TABLES 와 같은 표들)
+  delete_order text[] := array['task_deferrals', 'daily_stats'] || public.telos_trash_tables();
+  insert_order text[] := array(select x from unnest(delete_order) with ordinality as u (x, i) order by i desc);
   p jsonb := p_backup -> 'profile';
 begin
   if uid is null then
@@ -1184,9 +1278,7 @@ begin
       theme = coalesce(p ->> 'theme', theme),
       day_start_hour = coalesce((p ->> 'day_start_hour')::smallint, day_start_hour),
       sem1_start = coalesce(p ->> 'sem1_start', sem1_start),
-      sem1_end = coalesce(p ->> 'sem1_end', sem1_end),
       sem2_start = coalesce(p ->> 'sem2_start', sem2_start),
-      sem2_end = coalesce(p ->> 'sem2_end', sem2_end),
       entry_year = coalesce((p ->> 'entry_year')::smallint, entry_year),
       reviewed_term = coalesce(p ->> 'reviewed_term', reviewed_term),
       sidebar_collapsed = coalesce((p ->> 'sidebar_collapsed')::boolean, sidebar_collapsed)
@@ -1202,6 +1294,7 @@ declare
 begin
   foreach f in array array[
     'public.bootstrap_user()',
+    'public.telos_trash_tables()',
     'public.reorder_rows(text, uuid[])',
     'public.trash_item(text, uuid)',
     'public.restore_batch(uuid)',
@@ -1220,7 +1313,7 @@ $$;
 
 
 -- ============================================================================
--- 6. 매일 자동 작업 (9.3): run_daily_maintenance()
+-- 7. 매일 자동 작업 (9.3): run_daily_maintenance()
 --    pg_cron 이 매일 21:10 UTC(한국 06:10)에 실행한다. 몇 번 실행해도 결과가 같다.
 --    순서: daily_stats 확정 → 3개월 지난 timer_sessions → 30일 지난 할 일·D-day → 휴지통 7일
 -- ============================================================================
@@ -1285,11 +1378,7 @@ begin
         );
 
       -- 4) 휴지통에서 7일 지난 행 완전 삭제 (오답 사진은 트리거가 파일 삭제 대기열에 넣는다)
-      foreach t in array array[
-        'wrong_note_photos', 'wrong_notes', 'flash_cards', 'flash_decks', 'tasks', 'roadmap_items',
-        'exam_subjects', 'recurrences', 'ddays', 'timer_sessions', 'reflections', 'units', 'mock_rounds',
-        'date_timetables', 'timetable_slots', 'timetables', 'holidays', 'subjects'
-      ] loop
+      foreach t in array public.telos_trash_tables() loop
         execute format(
           'delete from public.%I where user_id = $1 and deleted_at < now() - interval ''7 days''', t
         ) using r.user_id;
@@ -1307,7 +1396,7 @@ revoke all on function public.run_daily_maintenance() from public, anon, authent
 
 
 -- ============================================================================
--- 7. Storage: 오답 사진 비공개 버킷 wrong-notes (서명된 URL 로만 표시)
+-- 8. Storage: 오답 사진 비공개 버킷 wrong-notes (서명된 URL 로만 표시)
 --    경로 규칙: <user_id>/<note_id>/<파일이름>
 -- ============================================================================
 
@@ -1337,7 +1426,7 @@ create policy "wrong-notes delete own" on storage.objects
 
 
 -- ============================================================================
--- 8. pg_cron 등록: 매일 21:10 UTC = 한국 시간 06:10
+-- 9. pg_cron 등록: 매일 21:10 UTC = 한국 시간 06:10
 --    pg_cron 확장이 켜져 있어야 한다 (안내 문서 참고). 꺼져 있으면 알림만 남긴다.
 -- ============================================================================
 
@@ -1355,11 +1444,8 @@ $$;
 
 -- 확인: 오류 없이 여기까지 오면 준비 완료
 select
-  (select count(*) from information_schema.tables where table_schema = 'public' and table_name in (
-    'profiles', 'subjects', 'units', 'timetables', 'timetable_slots', 'holidays', 'date_timetables',
-    'recurrences', 'ddays', 'exam_subjects', 'roadmap_items', 'tasks',
-    'task_deferrals', 'timer_sessions', 'daily_stats', 'reflections', 'mock_rounds', 'wrong_notes',
-    'wrong_note_photos', 'flash_decks', 'flash_cards', 'pending_file_deletions', 'maintenance_runs'
-  )) as "테이블 수 (23 이면 정상)",
+  (select count(*) from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE')
+    as "테이블 수 (24 이면 정상)",
+  (select max(version) from public.schema_migrations) as "DB 버전 (3 이면 최신)",
   (select count(*) from storage.buckets where id = 'wrong-notes') as "사진 버킷 (1 이면 정상)",
   (select count(*) from pg_extension where extname = 'pg_cron') as "pg_cron 확장 (1 이면 켜짐)";

@@ -13,8 +13,8 @@ export const MOCK_SUBJECTS: readonly DefaultSubject[] = [
   { name: "수학", color_key: "periwinkle" },
   { name: "영어", color_key: "mint" },
   { name: "한국사", color_key: "peach" },
-  { name: "통합과학", color_key: "butter" },
   { name: "통합사회", color_key: "lavender" },
+  { name: "통합과학", color_key: "butter" },
 ];
 
 /** 시계 시각(자정부터 센 분)으로 적은 시간표 항목 */
@@ -28,8 +28,7 @@ export const DEFAULT_TIMETABLES: readonly { name: string; default_for: Timetable
     default_for: "weekday",
     slots: [
       { name: "기상", category: "life", start: hm(6, 30), end: hm(6, 40) },
-      { name: "입실", category: "life", start: hm(8, 0), end: hm(8, 10) },
-      { name: "조례", category: "life", start: hm(8, 10), end: hm(8, 30) },
+      { name: "아침 자습", category: "study", start: hm(7, 30), end: hm(8, 30) },
       { name: "1교시", category: "class", start: hm(8, 30), end: hm(9, 20) },
       { name: "2교시", category: "class", start: hm(9, 30), end: hm(10, 20) },
       { name: "3교시", category: "class", start: hm(10, 30), end: hm(11, 20) },
@@ -56,13 +55,11 @@ export const DEFAULT_TIMETABLES: readonly { name: string; default_for: Timetable
     default_for: "weekend",
     slots: [
       { name: "기상", category: "life", start: hm(7, 0), end: hm(7, 10) },
-      { name: "아침 식사", category: "meal", start: hm(7, 30), end: hm(8, 40) },
       { name: "자습 1차시", category: "study", start: hm(8, 40), end: hm(10, 30) },
       { name: "자습 2차시", category: "study", start: hm(10, 30), end: hm(12, 10) },
       { name: "점심 식사", category: "meal", start: hm(12, 10), end: hm(13, 20) },
       { name: "자습 3차시", category: "study", start: hm(13, 20), end: hm(15, 0) },
       { name: "자습 4차시", category: "study", start: hm(15, 0), end: hm(16, 40) },
-      { name: "청소", category: "life", start: hm(16, 40), end: hm(17, 0) },
       { name: "자습 5차시", category: "study", start: hm(17, 0), end: hm(18, 0) },
       { name: "저녁 식사", category: "meal", start: hm(18, 0), end: hm(19, 0) },
       { name: "자습 6차시", category: "study", start: hm(19, 0), end: hm(20, 0) },
@@ -98,8 +95,3 @@ export const DEFAULT_HOLIDAYS: readonly (readonly [string, string])[] = [
   ["2028-07-17", "제헌절"], ["2028-08-15", "광복절"], ["2028-10-02", "추석 연휴"], ["2028-10-03", "추석·개천절"],
   ["2028-10-04", "추석 연휴"], ["2028-10-05", "대체공휴일"], ["2028-10-09", "한글날"], ["2028-12-25", "성탄절"],
 ];
-
-/** 시계 시각(분)을 하루 기준 시각부터 센 분으로 */
-export function clockToDayMin(clockMin: number, dayStartHour: number): number {
-  return (((clockMin - dayStartHour * 60) % 1440) + 1440) % 1440;
-}

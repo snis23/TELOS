@@ -36,7 +36,7 @@ export function checkBackup(text: string): BackupCheck {
     return { ok: false, reason: "JSON 파일이 아니에요" };
   }
   const raw = data as { app?: unknown; version?: unknown } | null;
-  if (!raw || typeof raw !== "object" || raw.app !== BACKUP_APP) return { ok: false, reason: "Telos 백업 파일이 아니에요" };
+  if (!raw || typeof raw !== "object" || raw.app !== BACKUP_APP) return { ok: false, reason: "TELOS 백업 파일이 아니에요" };
   if (raw.version !== 1 && raw.version !== BACKUP_VERSION) return { ok: false, reason: "지원하지 않는 백업 버전이에요" };
   const b = (raw.version === 1 ? upgradeV1(raw as V1Backup) : raw) as Partial<Backup>;
   if (!b.tables || typeof b.tables !== "object") return { ok: false, reason: "백업 내용이 비어 있어요" };

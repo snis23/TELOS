@@ -27,16 +27,3 @@ function subscribe(callback: () => void) {
 export function useLayout(): Layout {
   return useSyncExternalStore(subscribe, current, () => "phone");
 }
-
-/** 터치 기기 (pointer: coarse) */
-export function useCoarsePointer(): boolean {
-  return useSyncExternalStore(
-    (cb) => {
-      const m = window.matchMedia("(pointer: coarse)");
-      m.addEventListener("change", cb);
-      return () => m.removeEventListener("change", cb);
-    },
-    () => window.matchMedia("(pointer: coarse)").matches,
-    () => false,
-  );
-}

@@ -45,17 +45,13 @@ export function PlanSettings() {
           />
           <p className="pb-2 text-13 text-ink-2">{term.key ? `지금 ${termLabel(term.key)}` : "입학 연도를 정하면 학년을 계산해요"}</p>
         </div>
-        <div className="grid gap-4 pad:grid-cols-2">
-          <div className="flex flex-wrap gap-3">
-            <MonthDay label="1학기 시작" value={p.sem1_start} onChange={(v) => set({ sem1_start: v })} />
-            <MonthDay label="1학기 끝" value={p.sem1_end} onChange={(v) => set({ sem1_end: v })} />
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <MonthDay label="2학기 시작" value={p.sem2_start} onChange={(v) => set({ sem2_start: v })} />
-            <MonthDay label="2학기 끝 (다음 해)" value={p.sem2_end} onChange={(v) => set({ sem2_end: v })} />
-          </div>
+        <div className="flex flex-wrap gap-3">
+          <MonthDay label="1학기 시작" value={p.sem1_start} onChange={(v) => set({ sem1_start: v })} />
+          <MonthDay label="2학기 시작" value={p.sem2_start} onChange={(v) => set({ sem2_start: v })} />
         </div>
-        <p className="text-12 text-sub">2월 29일은 그해 2월 말일로 읽어요. 새 학기 시작일이 지나면 오늘 화면에서 내신 과목 정리를 물어봐요.</p>
+        <p className="text-12 text-sub">
+          각 학기는 다음 학기 시작 전날까지예요(여름 방학은 1학기, 겨울 방학은 2학기). 새 학기 시작일이 지나면 오늘 화면에서 내신 과목 정리를 물어봐요.
+        </p>
       </div>
     </Card>
   );

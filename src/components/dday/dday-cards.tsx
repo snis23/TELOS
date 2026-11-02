@@ -18,10 +18,8 @@ const TONE: Record<Urgency, { card: string; ink: string; bar: "urgent" | "warn" 
   normal: { card: "bg-normal-bg text-normal-ink", ink: "text-normal-ink", bar: "normal" },
 };
 
-/**
- * 5.3 홈 D-day 카드 (최대 4개). layout: row = 한 줄 4칸, grid = 2×2 (패드 가로), stack = 폰
- */
-export function DdayCards({ today, layout }: { today: string; layout: "row" | "grid" | "stack" }) {
+/** 5.3 오늘 화면의 시험 일정: D-day 카드 최대 4개를 2×2 로 (과목별 타이머 옆 칸) */
+export function DdayCards({ today }: { today: string }) {
   const router = useRouter();
   const { data, isPending } = useDdays();
   const progress = useExamProgressMap();
@@ -31,8 +29,7 @@ export function DdayCards({ today, layout }: { today: string; layout: "row" | "g
   return (
     <section aria-label="D-day" data-testid="dday-cards">
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="sr-only">D-day</h2>
-        <span />
+        <h2 className="text-13 font-semibold">시험 일정</h2>
         <button type="button" onClick={() => setEditing(true)} className="text-12 text-accent">
           편집
         </button>
@@ -44,14 +41,7 @@ export function DdayCards({ today, layout }: { today: string; layout: "row" | "g
           아직 D-day 가 없어요. 눌러서 추가해요
         </button>
       ) : (
-        <div
-          className={cn(
-            "grid gap-3",
-            layout === "row" && "grid-cols-2 pad:grid-cols-4",
-            layout === "grid" && "grid-cols-2",
-            layout === "stack" && "grid-cols-2",
-          )}
-        >
+        <div className="grid grid-cols-2 gap-2.5">
           {list.map((d) => {
             const tone = TONE[urgency(d.date, today)];
             const pct = prepPercent(d, progress.get(d.id) ?? null);
@@ -60,18 +50,16 @@ export function DdayCards({ today, layout }: { today: string; layout: "row" | "g
                 key={d.id}
                 type="button"
                 onClick={() => router.push(`/exam/?id=${d.id}`)}
-                className={cn(
-                  "relative flex min-w-0 flex-col gap-1 p-4 text-left",
-                  layout === "stack" ? "rounded-dday-phone" : "rounded-item",
-                  tone.card,
-                )}
+                className={cn("relative flex min-w-0 flex-col gap-0.5 rounded-item px-3.5 py-3 text-left", tone.card)}
               >
                 {d.pinned ? (
                   <Pin aria-label="고정됨" size={ICON_SIZE.pin} strokeWidth={ICON_STROKE} className="absolute top-3 right-3" />
                 ) : null}
                 <span className="truncate pr-4 text-12 font-medium">{d.title}</span>
-                <span className="text-12">{formatMonthDay(d.date)}</span>
-                <span className="num text-26 leading-tight font-semibold tracking-num pad:text-36">{ddayLabel(d.date, today)}</span>
+                <span className="flex items-baseline justify-between gap-2">
+                  <span className="num text-26 leading-tight font-semibold tracking-num">{ddayLabel(d.date, today)}</span>
+                  <span className="shrink-0 text-11">{formatMonthDay(d.date)}</span>
+                </span>
                 {pct !== null ? (
                   <span className="mt-1 flex flex-col gap-1">
                     <ProgressBar value={pct / 100} label={`${d.title} 준비율`} tone={tone.bar} track={tone.bar} />

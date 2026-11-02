@@ -22,7 +22,7 @@ export const PERF_KIND_LABELS: Record<PerfKind, string> = {
 export const EXAM_KIND_LABELS: Record<ExamKind, string> = { school: "내신 시험", mock: "모의고사", other: "기타 시험" };
 export const EXAM_KIND_HINTS: Record<ExamKind, string> = {
   school: "이번 학기 내신 과목이 들어가요",
-  mock: "모의고사 과목(국어·수학·영어·한국사·통합과학·통합사회)이 들어가요",
+  mock: "모의고사 과목(국어·수학·영어·한국사·통합사회·통합과학)이 들어가요",
   other: "모든 과목 중에서 골라요",
 };
 export const PERF_STATUS_LABELS: Record<PerfStatus, string> = { todo: "시작 전", doing: "준비 중", done: "완료" };

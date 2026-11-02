@@ -15,7 +15,7 @@ test("2. 할 일 추가 → 체크 → 진행률 변화", async ({ page }) => {
 
   await card.getByRole("checkbox", { name: "영단어 50개 완료" }).click();
   await expect(card.getByRole("progressbar", { name: "할 일 진행률" })).toHaveAttribute("aria-valuenow", "100");
-  await expect(page.locator("main h1")).toHaveText("오늘 할 일을 모두 끝냈어요");
+  await expect(page.locator("main h1")).toHaveText("오늘 할 일을 모두 끝냈어요. 수고했어요!");
 
   // 끝낸 항목은 취소선 + 맨 아래
   await expect(card.getByRole("button", { name: "영단어 50개", exact: true })).toHaveClass(/line-through/);

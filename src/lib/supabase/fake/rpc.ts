@@ -1,15 +1,18 @@
 /**
  * 가짜 백엔드의 앱용 함수 (supabase/telos.sql 의 함수와 같은 동작).
  */
-import { DEFAULT_HOLIDAYS, DEFAULT_TIMETABLES, MOCK_SUBJECTS, clockToDayMin } from "@/lib/defaults";
+import { DEFAULT_HOLIDAYS, DEFAULT_TIMETABLES, MOCK_SUBJECTS } from "@/lib/defaults";
+import { addDays } from "@/lib/date/days";
+import { clockToDayMin } from "@/lib/timetable/time";
 import { computeDailyStats } from "@/lib/stats/daily";
+import { pickColumns } from "../columns";
 import { BACKUP_TABLES, type TableName } from "../database.types";
 import { HAS_TRASH, PURGE_ORDER } from "./schema";
 import { FakeError, pgError, type FakeStore, type Row } from "./store";
 
 type Args = Record<string, unknown>;
 
-const TRASH_TABLES = new Set<TableName>([...HAS_TRASH]);
+const TRASH_TABLES = HAS_TRASH;
 const REORDER_TABLES = new Set<TableName>([
   "subjects",
   "units",
@@ -22,12 +25,6 @@ const REORDER_TABLES = new Set<TableName>([
   "flash_cards",
   "wrong_note_photos",
 ]);
-
-function addDays(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
 
 function bootstrap(store: FakeStore) {
   store.insert("profiles", [{ user_id: store.userId }], { cols: ["user_id"], ignore: true });
@@ -184,28 +181,8 @@ function refreshStats(store: FakeStore, args: Args) {
   return null;
 }
 
-const RESTORE_INSERT_ORDER: readonly TableName[] = [
-  "subjects",
-  "holidays",
-  "timetables",
-  "timetable_slots",
-  "date_timetables",
-  "mock_rounds",
-  "units",
-  "reflections",
-  "daily_stats",
-  "timer_sessions",
-  "ddays",
-  "exam_subjects",
-  "roadmap_items",
-  "recurrences",
-  "tasks",
-  "task_deferrals",
-  "flash_decks",
-  "flash_cards",
-  "wrong_notes",
-  "wrong_note_photos",
-];
+/** 복원할 때 넣는 순서 = 백업 표 지우는 순서의 반대 (restore_backup 과 같다) */
+const RESTORE_INSERT_ORDER: readonly TableName[] = [...BACKUP_TABLES].reverse();
 
 function restoreBackup(store: FakeStore, args: Args) {
   const backup = args.p_backup as { app?: string; version?: number; profile?: Row; tables?: Record<string, Row[]> };
@@ -216,15 +193,15 @@ function restoreBackup(store: FakeStore, args: Args) {
   try {
     for (const t of [...RESTORE_INSERT_ORDER].reverse()) store.delete(t, store.visible(t));
     for (const t of RESTORE_INSERT_ORDER) {
-      if (!(BACKUP_TABLES as readonly string[]).includes(t)) continue;
-      const rows = (backup.tables?.[t] ?? []).map((r) => ({ ...r, user_id: store.userId }));
+      // 모르는 칸은 버린다 (SQL 의 jsonb_populate_record 와 같다)
+      const rows = (backup.tables?.[t] ?? []).map((r) => ({ ...pickColumns(t, r), user_id: store.userId }));
       if (rows.length) store.insert(t, rows);
     }
     const pending = store.visible("pending_file_deletions").filter((r) => r.created_at === store.txNow);
     if (pending.length) store.delete("pending_file_deletions", pending);
     const profile = store.visible("profiles")[0];
     if (profile && backup.profile) {
-      const keys = ["theme", "day_start_hour", "sem1_start", "sem1_end", "sem2_start", "sem2_end", "entry_year", "reviewed_term", "sidebar_collapsed"];
+      const keys = ["theme", "day_start_hour", "sem1_start", "sem2_start", "entry_year", "reviewed_term", "sidebar_collapsed"];
       const patch: Row = {};
       for (const k of keys) if (backup.profile[k] != null) patch[k] = backup.profile[k];
       store.update("profiles", [profile], patch);

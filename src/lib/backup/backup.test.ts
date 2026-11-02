@@ -15,7 +15,7 @@ describe("백업 (9.5)", () => {
 
   it("앱 이름·버전·형식이 다르면 거절", () => {
     expect(checkBackup("not json")).toEqual({ ok: false, reason: "JSON 파일이 아니에요" });
-    expect(checkBackup('{"app":"other","version":1,"tables":{}}')).toMatchObject({ ok: false, reason: "Telos 백업 파일이 아니에요" });
+    expect(checkBackup('{"app":"other","version":1,"tables":{}}')).toMatchObject({ ok: false, reason: "TELOS 백업 파일이 아니에요" });
     expect(checkBackup('{"app":"telos","version":3,"tables":{}}')).toMatchObject({ ok: false });
     expect(checkBackup('{"app":"telos","version":2,"tables":{"users":[]}}')).toMatchObject({ ok: false });
     expect(checkBackup('{"app":"telos","version":2,"tables":{"tasks":{}}}')).toMatchObject({ ok: false });

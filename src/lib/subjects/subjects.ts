@@ -1,9 +1,8 @@
-import { MOCK_SUBJECTS } from "@/lib/defaults";
 import type { ExamKind, ProfileRow, SubjectRow } from "@/lib/supabase/database.types";
 
 /**
  * 과목 구조 (1차 수정)
- * - 모의고사 과목: 국어·수학·영어·한국사·통합과학·통합사회 (고정, 지우거나 보관하지 않는다)
+ * - 모의고사 과목: 국어·수학·영어·한국사·통합사회·통합과학 (고정, 지우거나 보관하지 않는다)
  * - 내신 과목: 학기마다 바뀐다. 학기가 끝나면 보관하고, 보관한 과목의 기록은 그대로 남는다.
  */
 
@@ -83,7 +82,6 @@ export function subjectsForNotes(kind: "school" | "mock", all: readonly SubjectR
   return kind === "school" ? activeSchoolSubjects(all) : mockSubjects(all);
 }
 
-export const MOCK_SUBJECT_NAMES: readonly string[] = MOCK_SUBJECTS.map((s) => s.name);
 
 /** 과목 이름 옆 꼬리표: 보관한 내신 과목은 "1-2" 처럼 학기를 붙여 구분한다 */
 export function subjectTag(s: Pick<SubjectRow, "kind" | "term" | "archived_at">): string | null {

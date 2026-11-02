@@ -8,82 +8,46 @@ import { TimerCard } from "@/components/timer/timer-card";
 import { useTimerContext } from "@/components/timer/timer-provider";
 import { CardErrorBoundary } from "@/components/ui/error-boundary";
 import { useLayout } from "@/lib/use-layout";
+import { NowCard } from "./now-card";
 import { ReflectionCard } from "./reflection-card";
 import { TermBanner } from "./term-banner";
-import { TodayBrief } from "./today-brief";
 import { TodayHeader } from "./today-header";
 
 /**
- * 오늘 화면 (5장, 4장 표). 모든 배치에서 맨 위에 명언·지금 시각·지금 할 일 카드가 온다.
- * 폰: 제목 → D-day → 타이머 → 쪽잠 한 줄 → 할 일 → 코멘트 버튼
- * 패드 세로: 1열(최대 720px): 제목 → D-day 한 줄 → 타이머(가로) → 할 일 → 쪽잠·회고 2열
- * 패드 가로: 2열(왼쪽 380px): 왼쪽 D-day 2×2 → 타이머 → 쪽잠 / 오른쪽 할 일 → 회고
- * PC: 제목 → D-day 한 줄 → 타이머(가로, 전체 너비) → 2열(할 일 3 : 쪽잠·회고 2)
+ * 오늘 화면 (5장). 모든 크기에서 같은 순서:
+ * 머리말 → 지금 카드(시각·일정·할 일) → [시험 일정 | 과목별 타이머] → [할 일 | 쪽잠·하루 코멘트]
+ * 패드 가로·PC 는 두 칸씩 나란히, 패드 세로는 일정·타이머만 나란히, 폰은 한 줄씩.
  */
 export function TodayView() {
   const layout = useLayout();
   const { today } = useTimerContext();
   const safe = (node: React.ReactNode) => <CardErrorBoundary>{node}</CardErrorBoundary>;
-
-  let body: React.ReactNode;
-  if (layout === "phone") {
-    body = (
-      <div className="card-stack">
-        {safe(<DdayCards today={today} layout="stack" />)}
-        {safe(<TimerCard />)}
-        {safe(<NapCard variant="line" />)}
-        {safe(<TaskCard />)}
-        <ReflectionCard date={today} asButton />
-      </div>
-    );
-  } else if (layout === "pad") {
-    body = (
-      <div className="card-stack mx-auto max-w-portrait">
-        {safe(<DdayCards today={today} layout="row" />)}
-        {safe(<TimerCard horizontal />)}
-        {safe(<TaskCard />)}
-        <div className="grid grid-cols-2 gap-8">
-          {safe(<NapCard />)}
-          {safe(<ReflectionCard date={today} />)}
-        </div>
-      </div>
-    );
-  } else if (layout === "land") {
-    body = (
-      <div className="grid grid-cols-[var(--spacing-left-col)_minmax(0,1fr)] items-start gap-8">
-        <div className="card-stack">
-          {safe(<DdayCards today={today} layout="grid" />)}
-          {safe(<TimerCard />)}
-          {safe(<NapCard />)}
-        </div>
-        <div className="card-stack">
-          {safe(<TaskCard />)}
-          {safe(<ReflectionCard date={today} />)}
-        </div>
-      </div>
-    );
-  } else {
-    body = (
-      <div className="card-stack">
-        {safe(<DdayCards today={today} layout="row" />)}
-        {safe(<TimerCard horizontal />)}
-        <div className="grid grid-cols-5 items-start gap-8">
-          <div className="col-span-3">{safe(<TaskCard />)}</div>
-          <div className="col-span-2 card-stack">
-            {safe(<NapCard />)}
-            {safe(<ReflectionCard date={today} />)}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const phone = layout === "phone";
+  const wide = layout === "land" || layout === "pc";
 
   return (
     <>
       <TodayHeader />
       <TermBanner today={today} />
-      {safe(<TodayBrief />)}
-      {body}
+      <div className="flex flex-col gap-4 pad:gap-5">
+        {safe(<NowCard />)}
+        <div className={phone ? "flex flex-col gap-4" : "grid grid-cols-2 items-start gap-5"}>
+          {safe(<DdayCards today={today} />)}
+          {safe(<TimerCard />)}
+        </div>
+        {phone ? safe(<NapCard variant="line" />) : null}
+        <div className={wide ? "grid grid-cols-5 items-start gap-5" : "flex flex-col gap-4 pad:gap-5"}>
+          <div className={wide ? "col-span-3" : undefined}>{safe(<TaskCard />)}</div>
+          {phone ? (
+            <ReflectionCard date={today} asButton />
+          ) : (
+            <div className={wide ? "col-span-2 flex flex-col gap-5" : "grid grid-cols-2 items-start gap-5"}>
+              {safe(<NapCard />)}
+              {safe(<ReflectionCard date={today} />)}
+            </div>
+          )}
+        </div>
+      </div>
       <TimerConflictDialog />
       <LongSessionDialog />
     </>

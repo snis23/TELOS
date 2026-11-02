@@ -22,11 +22,12 @@ test("12. PC 단축키 표는 선택·클릭이 안 되고, 단축키가 동작�
   await page.keyboard.press("Space");
   await expect(page.getByRole("button", { name: "타이머 일시정지" })).toBeVisible();
   await page.keyboard.press("KeyN");
-  await expect(page.getByRole("button", { name: "쪽잠 끝" })).toBeVisible();
+  await expect(page.getByTestId("nap-mode").getByRole("button", { name: "쪽잠 끝" })).toBeVisible();
   await page.keyboard.press("KeyN");
+  await expect(page.getByTestId("nap-mode")).toBeHidden();
   await expect(page.getByText(/쪽잠 \d+분 기록했어요/)).toBeVisible();
 
-  // Alt+2 → 시험 대비, Alt+3 → 계획, Shift+T → 다크 모드
+  // Alt+2 → 스케줄, Alt+3 → 계획, Shift+T → 다크 모드
   await page.keyboard.press("Alt+Digit2");
   await expect(page).toHaveURL(/\/exam\/$/);
   await page.locator("main h1").click();

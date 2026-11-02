@@ -54,7 +54,7 @@ export function LoginForm() {
     <div className="flex min-h-dvh items-center justify-center px-5 py-8">
       <form onSubmit={submit} noValidate className="card flex w-full max-w-login flex-col gap-4">
         <div>
-          <p className="text-15 font-semibold tracking-brand">Telos</p>
+          <p className="text-15 font-semibold tracking-brand">TELOS</p>
           <h1 className="page-title mt-1">로그인</h1>
         </div>
         <TextField
