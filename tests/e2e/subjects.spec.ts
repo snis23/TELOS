@@ -13,7 +13,7 @@ test("과목 추가 → 중복 검사 → 삭제 → 되돌리기", async ({ pag
   await expect(page.getByText("화학Ⅰ")).toBeVisible();
 
   await page.getByRole("button", { name: "화학Ⅰ 수정" }).click();
-  await page.getByRole("button", { name: "삭제" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "삭제" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "삭제" }).click();
   await expect(page.getByText("삭제했어요")).toBeVisible();
   await expect(page.getByText("화학Ⅰ")).toBeHidden();

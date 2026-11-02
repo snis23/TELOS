@@ -11,6 +11,8 @@ import { GlobalShortcuts } from "./global-shortcuts";
 import { OfflineBanner } from "./offline-banner";
 import { ShortcutTable } from "./shortcut-table";
 import { Sidebar } from "./sidebar";
+import { TimerProvider } from "@/components/timer/timer-provider";
+import { TimerShortcuts } from "@/components/timer/timer-shortcuts";
 import { useAppStartup } from "./startup";
 
 const COLLAPSED_KEY = "telos:sidebar-collapsed";
@@ -63,11 +65,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
 
   return (
+    <TimerProvider>
     <div className="min-h-dvh">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-input focus:bg-surface focus:px-3 focus:py-2">
         본문으로 건너뛰기
       </a>
       <GlobalShortcuts />
+      <TimerShortcuts />
       <Sidebar collapsed={collapsed} onToggle={toggleCollapsed} />
       <div className={cn("min-w-0", collapsed ? "land:pl-sidebar-collapsed pc:pl-sidebar" : "land:pl-sidebar")}>
         <OfflineBanner />
@@ -78,5 +82,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       <BottomTabs />
     </div>
+    </TimerProvider>
   );
 }

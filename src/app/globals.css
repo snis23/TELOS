@@ -6,6 +6,7 @@
  */
 
 @custom-variant touch (@media (pointer: coarse));
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* ───────── 3.1 기본 색 / 3.2 상태 색 / 3.3 과목 색 ───────── */
 :root,

@@ -1,14 +1,13 @@
-"use client";
+import type { Metadata } from "next";
+import { FocusView } from "@/components/focus/focus-view";
+import { TimerProvider } from "@/components/timer/timer-provider";
 
-import Link from "next/link";
+export const metadata: Metadata = { title: "집중 모드" };
 
 export default function FocusPage() {
   return (
-    <div data-theme="dark" className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-bg text-ink">
-      <p className="text-13 text-sub">집중 모드는 준비 중이에요</p>
-      <Link href="/" className="text-13 text-accent">
-        나가기
-      </Link>
-    </div>
+    <TimerProvider>
+      <FocusView />
+    </TimerProvider>
   );
 }

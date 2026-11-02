@@ -10,4 +10,6 @@ export const ICON_SIZE = {
   inline: 14,
   /** D-day 카드 핀 */
   pin: 12,
+  /** 재생·일시정지 버튼 (지름 56px 원 안) */
+  play: 22,
 } as const;

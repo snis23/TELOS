@@ -17,6 +17,15 @@ test("12. PC 단축키 표는 선택·클릭이 안 되고, 단축키가 동작�
   // 탭 이동에서 빠진다: 안에 포커스 받을 요소가 없다
   expect(await table.locator("a, button, [tabindex]").count()).toBe(0);
 
+  // Space → 타이머 시작, N → 쪽잠
+  await page.locator("main h1").click();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("button", { name: "타이머 일시정지" })).toBeVisible();
+  await page.keyboard.press("KeyN");
+  await expect(page.getByRole("button", { name: "쪽잠 끝" })).toBeVisible();
+  await page.keyboard.press("KeyN");
+  await expect(page.getByText(/쪽잠 \d+분 기록했어요/)).toBeVisible();
+
   // Alt+2 → 계획, Shift+T → 다크 모드
   await page.keyboard.press("Alt+Digit2");
   await expect(page).toHaveURL(/\/plan\/$/);
