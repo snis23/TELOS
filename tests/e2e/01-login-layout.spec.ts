@@ -59,10 +59,13 @@ test("9. 다크 모드 전환 → 새로고침 후 색 깜빡임 없음", async 
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 });
 
-test("10. 가로 스크롤 없음 (오늘, 설정)", async ({ page }) => {
+test("10. 가로 스크롤 없음 (모든 메뉴 화면)", async ({ page }) => {
   await login(page);
   await expectNoHorizontalScroll(page);
-  await page.goto("settings/");
-  await expect(page.getByText("과목 관리")).toBeVisible();
-  await expectNoHorizontalScroll(page);
+  for (const path of ["plan/", "exam/", "learn/", "record/", "grade/", "settings/"]) {
+    await page.goto(path);
+    await expect(page.locator("main h1")).toBeVisible();
+    await page.waitForTimeout(300);
+    await expectNoHorizontalScroll(page);
+  }
 });

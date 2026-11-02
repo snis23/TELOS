@@ -13,7 +13,7 @@ import { requireSupabase } from "@/lib/supabase/client";
 import { shiftDayMin } from "@/lib/timetable/time";
 
 const HOURS = Array.from({ length: 13 }, (_, h) => h);
-const label = (h: number) => (h === 0 ? "자정 (0시)" : `오전 ${h}시`);
+const label = (h: number) => (h === 0 ? "자정 (0시)" : h === 12 ? "낮 12시" : `오전 ${h}시`);
 
 /**
  * 5.1 하루 기준 시각 (기본 오전 6시). 이 시각 전에 한 공부와 할 일은 전날 것으로 센다.

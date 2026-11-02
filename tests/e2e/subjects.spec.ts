@@ -16,7 +16,10 @@ test("과목 추가 → 중복 검사 → 삭제 → 되돌리기", async ({ pag
   await page.getByRole("dialog").getByRole("button", { name: "삭제" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "삭제" }).click();
   await expect(page.getByText("삭제했어요")).toBeVisible();
-  await expect(page.getByText("화학Ⅰ")).toBeHidden();
+  const manager = page.getByRole("region", { name: "과목 관리" });
+  await expect(manager.getByText("화학Ⅰ")).toBeHidden();
+  // 휴지통에 들어간다
+  await expect(page.getByRole("region", { name: "휴지통" }).getByText("화학Ⅰ")).toBeVisible();
   await page.getByRole("button", { name: "되돌리기" }).click();
-  await expect(page.getByText("화학Ⅰ")).toBeVisible();
+  await expect(manager.getByText("화학Ⅰ")).toBeVisible();
 });

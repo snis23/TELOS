@@ -24,7 +24,6 @@ function uuid(): string {
 
 export class FakeStore {
   private tables = new Map<TableName, Row[]>();
-  private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private seq = 1;
   /** 현재 트랜잭션 시각 (트리거와 restore_backup 이 같은 now() 를 보도록) */
   txNow: string | null = null;
@@ -48,9 +47,9 @@ export class FakeStore {
     }
   }
 
+  /** 바뀔 때마다 바로 쓴다 (화면을 빨리 옮겨도 잃지 않게) */
   private scheduleSave() {
-    if (this.saveTimer) clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => this.flush(), 50);
+    this.flush();
   }
 
   flush() {

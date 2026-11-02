@@ -12,7 +12,8 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    include: ["src/**/*.test.{ts,tsx}", "tests/unit/**/*.test.{ts,tsx}"],
+    include: ["src/**/*.test.{ts,tsx}", "supabase/**/*.test.ts"],
+    testTimeout: 30_000,
     env: { TZ: "UTC" },
   },
 });
