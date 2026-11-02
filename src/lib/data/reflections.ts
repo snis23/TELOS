@@ -22,8 +22,8 @@ export function useReflection(date: string) {
   });
 }
 
-/** 회고 저장: 하루에 하나 (없으면 만들고 있으면 고친다) */
-export async function saveReflection(row: Pick<ReflectionRow, "id" | "study_date" | "good" | "bad" | "tomorrow" | "condition">) {
+/** 하루 코멘트 저장: 하루에 하나 (없으면 만들고 있으면 고친다) */
+export async function saveReflection(row: Pick<ReflectionRow, "id" | "study_date" | "comment">) {
   const { error } = await requireSupabase().from("reflections").upsert(row, { onConflict: "id" });
   if (error) throw error;
 }

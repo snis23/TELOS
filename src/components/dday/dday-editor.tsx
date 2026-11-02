@@ -8,7 +8,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SortableList } from "@/components/ui/sortable";
 import { cn } from "@/lib/cn";
 import { newId } from "@/lib/data/crud";
-import { ddaysKey, useDdayMutations, useDdays } from "@/lib/data/ddays";
+import { ddaysKey, examSubjectsKey, useDdayMutations, useDdays, useExamSubjectMutations } from "@/lib/data/ddays";
+import { useAllSubjects } from "@/lib/data/subjects";
+import { subjectsForExam } from "@/lib/subjects/subjects";
 import { useToday } from "@/lib/data/today";
 import { formatMonthDay } from "@/lib/date/days";
 import { ddayLabel, isUpcoming } from "@/lib/dday/dday";
@@ -26,6 +28,25 @@ export function ddayPatch(v: DdayFormValues): Partial<DdayRow> {
     status: v.status,
     prep_percent: v.prep_percent,
     memo: v.memo || null,
+    exam_kind: v.exam_kind,
+  };
+}
+
+/** 일정 추가. 시험이면 종류에 맞는 과목을 시험 과목으로 함께 넣는다 (시험 대비 로드맵). 새 id 를 돌려준다 */
+export function useCreateDday() {
+  const { insert } = useDdayMutations();
+  const examSubjects = useExamSubjectMutations();
+  const { data: allSubjects } = useAllSubjects();
+  return (v: DdayFormValues): string => {
+    const id = newId();
+    insert.mutate({ rows: [{ id, ...ddayPatch(v) }], appendTo: ddaysKey });
+    if (v.type === "exam") {
+      examSubjects.insert.mutate({
+        rows: subjectsForExam(v.exam_kind, allSubjects ?? []).map((s, i) => ({ id: newId(), dday_id: id, subject_id: s.id, sort_order: i })),
+        appendTo: examSubjectsKey,
+      });
+    }
+    return id;
   };
 }
 
@@ -36,7 +57,8 @@ export function ddayPatch(v: DdayFormValues): Partial<DdayRow> {
 export function DdayList({ onOpenDetail }: { onOpenDetail?: (d: DdayRow) => void }) {
   const today = useToday();
   const { data } = useDdays();
-  const { insert, update, trash, reorder } = useDdayMutations();
+  const { update, trash, reorder } = useDdayMutations();
+  const create = useCreateDday();
   const [editing, setEditing] = useState<DdayRow | "new" | null>(null);
   const [showPast, setShowPast] = useState(false);
   const all = useMemo(() => data ?? [], [data]);
@@ -115,7 +137,7 @@ export function DdayList({ onOpenDetail }: { onOpenDetail?: (d: DdayRow) => void
         dday={editing === "new" ? null : editing}
         onClose={() => setEditing(null)}
         onSubmit={(v) => {
-          if (editing === "new") insert.mutate({ rows: [{ id: newId(), ...ddayPatch(v) }], appendTo: ddaysKey });
+          if (editing === "new") create(v);
           else if (editing) update.mutate({ ids: [editing.id], patch: ddayPatch(v) });
         }}
         onDelete={

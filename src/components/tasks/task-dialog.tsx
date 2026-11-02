@@ -20,7 +20,7 @@ import { fieldErrors } from "@/lib/validation/form";
 
 export const taskFormSchema = z
   .object({
-    title: z.string().trim().min(1, "제목을 입력해 주세요").max(60, "60자 이내로 써 주세요"),
+    title: z.string().trim().min(1, "제목을 입력해 주세요").max(80, "80자 이내로 써 주세요"),
     subject_id: z.string().nullable(),
     est_minutes: z
       .number({ error: "숫자로 입력해 주세요" })

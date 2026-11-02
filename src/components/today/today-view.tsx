@@ -9,11 +9,13 @@ import { useTimerContext } from "@/components/timer/timer-provider";
 import { CardErrorBoundary } from "@/components/ui/error-boundary";
 import { useLayout } from "@/lib/use-layout";
 import { ReflectionCard } from "./reflection-card";
+import { TermBanner } from "./term-banner";
+import { TodayBrief } from "./today-brief";
 import { TodayHeader } from "./today-header";
 
 /**
- * 오늘 화면 (5장, 4장 표):
- * 폰: 제목 → D-day → 타이머 → 쪽잠 한 줄 → 할 일 → 회고 버튼
+ * 오늘 화면 (5장, 4장 표). 모든 배치에서 맨 위에 명언·지금 시각·지금 할 일 카드가 온다.
+ * 폰: 제목 → D-day → 타이머 → 쪽잠 한 줄 → 할 일 → 코멘트 버튼
  * 패드 세로: 1열(최대 720px): 제목 → D-day 한 줄 → 타이머(가로) → 할 일 → 쪽잠·회고 2열
  * 패드 가로: 2열(왼쪽 380px): 왼쪽 D-day 2×2 → 타이머 → 쪽잠 / 오른쪽 할 일 → 회고
  * PC: 제목 → D-day 한 줄 → 타이머(가로, 전체 너비) → 2열(할 일 3 : 쪽잠·회고 2)
@@ -79,6 +81,8 @@ export function TodayView() {
   return (
     <>
       <TodayHeader />
+      <TermBanner today={today} />
+      {safe(<TodayBrief />)}
       {body}
       <TimerConflictDialog />
       <LongSessionDialog />

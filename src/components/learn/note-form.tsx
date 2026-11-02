@@ -13,7 +13,7 @@ import { cn } from "@/lib/cn";
 import { useUserId } from "@/lib/auth/auth-provider";
 import { newId, useTableMutations } from "@/lib/data/crud";
 import { NOTE_BUCKET, useMockRounds } from "@/lib/data/learn";
-import { useUnits } from "@/lib/data/plan";
+import { useUnits } from "@/lib/data/learn";
 import { useSubjects } from "@/lib/data/subjects";
 import { ICON_SIZE, ICON_STROKE } from "@/lib/design/icons";
 import { idbDelete, idbGet, idbSet } from "@/lib/idb";

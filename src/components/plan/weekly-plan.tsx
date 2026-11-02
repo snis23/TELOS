@@ -19,19 +19,18 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ProgressBar } from "@/components/ui/progress";
 import { SubjectTag } from "@/components/ui/tag";
 import { cn } from "@/lib/cn";
-import { useGoalTasks, useGoals } from "@/lib/data/plan";
+import { useDdays, useRoadmapItems } from "@/lib/data/ddays";
 import { useSubjectMap } from "@/lib/data/subjects";
 import { useTaskMutations, useTasksRange } from "@/lib/data/tasks";
 import { useToday } from "@/lib/data/today";
-import { WEEKDAY_SHORT, addDays, eachDay, formatMonthDay } from "@/lib/date/days";
+import { WEEKDAY_SHORT, addDays, eachDay, formatMonthDay, weekStart } from "@/lib/date/days";
 import { ICON_SIZE, ICON_STROKE } from "@/lib/design/icons";
-import { goalProgress, overlaps, weekRange } from "@/lib/plan/goals";
 import type { SubjectRow, TaskRow } from "@/lib/supabase/database.types";
 import { sortTasks } from "@/lib/tasks/defer";
 import { useLayout } from "@/lib/use-layout";
 
 /**
- * 6.3 주간 계획: 한 주는 월요일부터. 위에 그 주의 주 목표, 아래에 요일별 할 일.
+ * 6.3 주간 계획: 한 주는 월요일부터. 위에 그 주의 시험 대비 로드맵 계획 요약, 아래에 요일별 할 일.
  * 패드 가로·PC 는 7열, 패드 세로·폰은 요일별 세로 목록.
  * 패드와 PC 에서는 할 일을 다른 요일로 끌어 옮길 수 있다 (미룬 횟수는 오르지 않음).
  */
@@ -39,11 +38,11 @@ export function WeeklyPlan() {
   const today = useToday();
   const layout = useLayout();
   const [anchor, setAnchor] = useState(today);
-  const week = weekRange(anchor);
+  const week = { start: weekStart(anchor), end: addDays(weekStart(anchor), 6) };
   const days = eachDay(week.start, week.end);
   const { data: tasks } = useTasksRange(week.start, week.end);
-  const { data: goals } = useGoals();
-  const { data: allTasks } = useGoalTasks();
+  const { data: ddays } = useDdays();
+  const { data: roadmap } = useRoadmapItems();
   const subjects = useSubjectMap();
   const { update } = useTaskMutations();
   const [adding, setAdding] = useState<string | null>(null);
@@ -55,7 +54,15 @@ export function WeeklyPlan() {
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 6 } }),
   );
 
-  const weekGoals = (goals ?? []).filter((g) => g.level === "week" && overlaps({ start: g.start_date, end: g.end_date }, week));
+  // 이 주에 로드맵 계획이 있는 시험별: 끝낸 칸 / 전체 칸
+  const weekItems = (roadmap ?? []).filter((i) => i.study_date >= week.start && i.study_date <= week.end);
+  const weekExams = (ddays ?? [])
+    .filter((d) => d.type === "exam")
+    .map((d) => {
+      const list = weekItems.filter((i) => i.dday_id === d.id);
+      return { exam: d, total: list.length, done: list.filter((i) => i.done_at).length };
+    })
+    .filter((x) => x.total > 0);
   const byDay = new Map<string, TaskRow[]>(days.map((d) => [d, sortTasks((tasks ?? []).filter((t) => t.study_date === d))]));
 
   const onDragEnd = (e: DragEndEvent) => {
@@ -88,21 +95,20 @@ export function WeeklyPlan() {
         ) : null}
       </div>
 
-      <section className="card flex flex-col gap-2" aria-label="이번 주 목표">
-        <h2 className="text-14 font-semibold">주 목표</h2>
-        {weekGoals.length === 0 ? (
-          <p className="text-13 text-sub">이 주의 목표가 없어요. 로드맵에서 주 목표를 만들 수 있어요</p>
+      <section className="card flex flex-col gap-2" aria-label="이번 주 시험 대비">
+        <h2 className="text-14 font-semibold">이번 주 시험 대비 계획</h2>
+        {weekExams.length === 0 ? (
+          <p className="text-13 text-sub">이 주의 로드맵 계획이 없어요. 시험 대비 화면의 달력에 적을 수 있어요</p>
         ) : (
-          weekGoals.map((g) => {
-            const p = goalProgress(g, goals ?? [], allTasks ?? []);
-            return (
-              <div key={g.id} className="flex items-center gap-3">
-                <span className={cn("min-w-0 flex-1 truncate text-13", g.done_at ? "text-sub line-through" : "text-ink-2")}>{g.title}</span>
-                <ProgressBar value={p} label={`${g.title} 진행률`} className="max-w-32" />
-                <span className="num w-10 text-right text-11 text-sub">{Math.round(p * 100)}%</span>
-              </div>
-            );
-          })
+          weekExams.map(({ exam, total, done }) => (
+            <div key={exam.id} className="flex items-center gap-3">
+              <span className="min-w-0 flex-1 truncate text-13 text-ink-2">{exam.title}</span>
+              <ProgressBar value={done / total} label={`${exam.title} 이번 주 진행률`} className="max-w-32" />
+              <span className="num w-12 text-right text-11 text-sub">
+                {done}/{total}
+              </span>
+            </div>
+          ))
         )}
       </section>
 
@@ -118,7 +124,7 @@ export function WeeklyPlan() {
               subjects={subjects}
               canDrag={canDrag}
               compact={columns}
-              onToggle={(t, v) => update.mutate({ ids: [t.id], patch: { done_at: v ? new Date().toISOString() : null } })}
+              onToggle={(t, v) => actions.toggleDone(t, v)}
               onAdd={() => setAdding(d)}
             />
           ))}

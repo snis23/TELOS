@@ -37,7 +37,7 @@ export function TaskItem({ task, subject, recurrence, handle, onToggle, onEdit, 
   const done = Boolean(task.done_at);
   const level = done ? 0 : deferLevel(task);
   const label = done ? null : deferLabel(task);
-  const canDefer = !done && task.source !== "recurrence" && task.source !== "range";
+  const canDefer = !done && task.source !== "recurrence";
   const [offset, setOffset] = useState(0);
   const drag = useRef<{ x: number; y: number; base: number; active: boolean } | null>(null);
 

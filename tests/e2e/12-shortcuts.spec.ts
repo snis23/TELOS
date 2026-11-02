@@ -26,8 +26,11 @@ test("12. PC 단축키 표는 선택·클릭이 안 되고, 단축키가 동작�
   await page.keyboard.press("KeyN");
   await expect(page.getByText(/쪽잠 \d+분 기록했어요/)).toBeVisible();
 
-  // Alt+2 → 계획, Shift+T → 다크 모드
+  // Alt+2 → 시험 대비, Alt+3 → 계획, Shift+T → 다크 모드
   await page.keyboard.press("Alt+Digit2");
+  await expect(page).toHaveURL(/\/exam\/$/);
+  await page.locator("main h1").click();
+  await page.keyboard.press("Alt+Digit3");
   await expect(page).toHaveURL(/\/plan\/$/);
   const before = await page.locator("html").getAttribute("data-theme");
   await page.keyboard.press("Shift+KeyT");

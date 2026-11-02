@@ -62,7 +62,7 @@ test("9. 다크 모드 전환 → 새로고침 후 색 깜빡임 없음", async 
 test("10. 가로 스크롤 없음 (모든 메뉴 화면)", async ({ page }) => {
   await login(page);
   await expectNoHorizontalScroll(page);
-  for (const path of ["plan/", "exam/", "learn/", "record/", "grade/", "settings/"]) {
+  for (const path of ["plan/", "exam/", "learn/", "record/", "settings/"]) {
     await page.goto(path);
     await expect(page.locator("main h1")).toBeVisible();
     await page.waitForTimeout(300);

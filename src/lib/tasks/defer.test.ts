@@ -3,7 +3,7 @@ import { bulkDeferTargets, deferLabel, deferLevel, sortTasks, staleTasks } from 
 
 const base = {
   id: "x",
-  source: "manual" as "manual" | "recurrence" | "range" | "goal",
+  source: "manual" as "manual" | "recurrence" | "roadmap",
   deferred_count: 0,
   missed_streak: 0,
   must_do: false,
@@ -45,14 +45,13 @@ describe("미루기 강조 단계 (5.7)", () => {
     expect(sortTasks(list).map((x) => x.id)).toEqual(["c", "e", "b", "a", "f", "d"]);
   });
 
-  it("한 번에 넘기기 대상: 반복·범위·오늘 꼭 하기·끝낸 일 제외", () => {
+  it("한 번에 넘기기 대상: 반복·오늘 꼭 하기·끝낸 일 제외 (로드맵에서 온 할 일은 넘긴다)", () => {
     const list = [
       t({ id: "a" }),
       t({ id: "b", source: "recurrence" }),
       t({ id: "c", must_do: true }),
       t({ id: "d", done_at: "x" }),
-      t({ id: "e", source: "range" }),
-      t({ id: "f", source: "goal" }),
+      t({ id: "f", source: "roadmap" }),
     ];
     expect(bulkDeferTargets(list).map((x) => x.id)).toEqual(["a", "f"]);
   });

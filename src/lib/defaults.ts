@@ -5,24 +5,16 @@
 import type { SubjectColorKey } from "@/lib/design/subject-colors";
 import type { SlotCategory, TimetableDefault } from "@/lib/supabase/database.types";
 
-export type DefaultSubject = {
-  name: string;
-  color_key: SubjectColorKey;
-  show_in_school_notes: boolean;
-  show_in_mock_notes: boolean;
-  mock_max_score: number | null;
-  has_percentile: boolean;
-};
+/** 모의고사 과목 (고정). 빠진 것이 있으면 bootstrap_user 가 다시 채운다 */
+export type DefaultSubject = { name: string; color_key: SubjectColorKey };
 
-export const DEFAULT_SUBJECTS: readonly DefaultSubject[] = [
-  { name: "국어", color_key: "rose", show_in_school_notes: true, show_in_mock_notes: true, mock_max_score: 100, has_percentile: true },
-  { name: "수학", color_key: "periwinkle", show_in_school_notes: true, show_in_mock_notes: true, mock_max_score: 100, has_percentile: true },
-  { name: "영어", color_key: "mint", show_in_school_notes: true, show_in_mock_notes: true, mock_max_score: 100, has_percentile: false },
-  { name: "과학", color_key: "butter", show_in_school_notes: true, show_in_mock_notes: false, mock_max_score: null, has_percentile: false },
-  { name: "사회", color_key: "lavender", show_in_school_notes: true, show_in_mock_notes: false, mock_max_score: null, has_percentile: false },
-  { name: "한국사", color_key: "peach", show_in_school_notes: true, show_in_mock_notes: true, mock_max_score: 50, has_percentile: false },
-  { name: "탐구1", color_key: "sky", show_in_school_notes: false, show_in_mock_notes: true, mock_max_score: 50, has_percentile: true },
-  { name: "탐구2", color_key: "sage", show_in_school_notes: false, show_in_mock_notes: true, mock_max_score: 50, has_percentile: true },
+export const MOCK_SUBJECTS: readonly DefaultSubject[] = [
+  { name: "국어", color_key: "rose" },
+  { name: "수학", color_key: "periwinkle" },
+  { name: "영어", color_key: "mint" },
+  { name: "한국사", color_key: "peach" },
+  { name: "통합과학", color_key: "butter" },
+  { name: "통합사회", color_key: "lavender" },
 ];
 
 /** 시계 시각(자정부터 센 분)으로 적은 시간표 항목 */
@@ -55,6 +47,8 @@ export const DEFAULT_TIMETABLES: readonly { name: string; default_for: Timetable
       { name: "야자 3차시", category: "study", start: hm(22, 20), end: hm(23, 0) },
       { name: "귀사", category: "life", start: hm(23, 0), end: hm(23, 10) },
       { name: "점호", category: "life", start: hm(23, 30), end: hm(23, 40) },
+      { name: "기숙사 1차시", category: "study", start: hm(0, 0), end: hm(1, 0) },
+      { name: "기숙사 2차시", category: "study", start: hm(1, 0), end: hm(2, 0) },
     ],
   },
   {
@@ -71,7 +65,14 @@ export const DEFAULT_TIMETABLES: readonly { name: string; default_for: Timetable
       { name: "청소", category: "life", start: hm(16, 40), end: hm(17, 0) },
       { name: "자습 5차시", category: "study", start: hm(17, 0), end: hm(18, 0) },
       { name: "저녁 식사", category: "meal", start: hm(18, 0), end: hm(19, 0) },
+      { name: "자습 6차시", category: "study", start: hm(19, 0), end: hm(20, 0) },
+      { name: "자습 7차시", category: "study", start: hm(20, 0), end: hm(21, 0) },
+      { name: "자습 8차시", category: "study", start: hm(21, 0), end: hm(22, 0) },
+      { name: "자습 9차시", category: "study", start: hm(22, 0), end: hm(23, 0) },
       { name: "점호", category: "life", start: hm(22, 30), end: hm(22, 40) },
+      { name: "자습 10차시", category: "study", start: hm(23, 0), end: hm(24, 0) },
+      { name: "자습 11차시", category: "study", start: hm(0, 0), end: hm(1, 0) },
+      { name: "자습 12차시", category: "study", start: hm(1, 0), end: hm(2, 0) },
     ],
   },
 ];

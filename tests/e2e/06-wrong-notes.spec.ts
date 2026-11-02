@@ -17,10 +17,19 @@ async function pngBuffer(page: import("@playwright/test").Page): Promise<Buffer>
   return Buffer.from(base64, "base64");
 }
 
-test("6. 오답 추가(사진) → 해결 표시 → 거르기. 과목 추가와 숨기기", async ({ page }, testInfo) => {
+test("6. 내신 과목 추가 → 오답 추가(사진) → 해결 표시 → 거르기 → 과목 보관(기록 유지)", async ({ page }, testInfo) => {
   await login(page);
   await page.goto("learn/");
   await page.getByRole("tab", { name: "오답노트" }).click();
+
+  // 처음에는 내신 과목이 없다: 이번 학기 과목을 추가한다
+  await expect(page.getByText("이번 학기 내신 과목이 없어요")).toBeVisible();
+  await page.getByRole("button", { name: "내신 과목 추가" }).click();
+  const subjectDialog = page.getByRole("dialog", { name: "내신 과목 추가" });
+  await subjectDialog.getByLabel("이름").fill("대수");
+  await subjectDialog.getByRole("button", { name: "저장" }).click();
+  const chips = page.getByRole("group", { name: "과목" });
+  await expect(chips.getByRole("button", { name: /^대수 \d+$/ })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("아직 기록한 오답이 없어요")).toBeVisible();
 
   // 사진으로 추가
@@ -57,17 +66,20 @@ test("6. 오답 추가(사진) → 해결 표시 → 거르기. 과목 추가와
   await page.getByRole("radiogroup", { name: "상태 거르기" }).getByRole("radio", { name: "해결" }).click();
   await expect(page.getByTestId("note-item")).toHaveCount(1);
 
-  // 과목 추가
-  await page.getByRole("button", { name: "과목", exact: true }).click();
-  await page.getByRole("button", { name: "새 과목 만들기" }).click();
-  const subjectDialog = page.getByRole("dialog", { name: "과목 추가" });
-  await subjectDialog.getByLabel("이름").fill("화학Ⅰ");
-  await subjectDialog.getByRole("button", { name: "저장" }).click();
-  const chips = page.getByRole("group", { name: "과목" });
-  await expect(chips.getByRole("button", { name: /^화학Ⅰ \d+$/ })).toHaveAttribute("aria-pressed", "true");
+  // 과목 보관: 고르는 목록에서 빠져도 오답이 있으면 오답노트에 남는다
+  await chips.getByRole("button", { name: "대수 과목 메뉴" }).click();
+  await page.getByRole("button", { name: "보관 또는 삭제" }).click();
+  await page.getByRole("dialog", { name: "대수 과목" }).getByRole("button", { name: "보관 (기록 유지)" }).click();
+  await expect(chips.getByRole("button", { name: /^대수 \d+$/ })).toBeVisible();
+  await page.goto("settings/");
+  await page.getByRole("button", { name: /보관한 과목 1개/ }).click();
+  await expect(page.getByRole("region", { name: "보관한 과목" }).getByText("대수")).toBeVisible();
 
-  // 오답이 없는 과목은 바로 숨긴다
-  await chips.getByRole("button", { name: "화학Ⅰ 과목 메뉴" }).click();
-  await page.getByRole("button", { name: "이 종류에서 숨기기 또는 삭제" }).click();
-  await expect(chips.getByRole("button", { name: /^화학Ⅰ \d+$/ })).toHaveCount(0);
+  // 모의고사 오답노트는 고정 과목
+  await page.goto("learn/");
+  await page.getByRole("tab", { name: "오답노트" }).click();
+  await page.getByRole("radiogroup", { name: "종류" }).getByRole("radio", { name: /모의고사/ }).click();
+  await expect(chips.getByRole("button", { name: /^국어 \d+$/ })).toBeVisible();
+  await expect(chips.getByRole("button", { name: /^통합사회 \d+$/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "내신 과목", exact: true })).toHaveCount(0);
 });

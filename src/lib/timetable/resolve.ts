@@ -27,9 +27,22 @@ export function slotsOf(timetableId: string | null, slots: readonly TimetableSlo
   return slots.filter((s) => s.timetable_id === timetableId && !s.deleted_at).sort((a, b) => a.start_min - b.start_min);
 }
 
-/** 지금 일정: "지금 야자 1차시 · 21:00까지" */
+/** 지금 일정: "지금 야자 1차시 · 21:00까지". 겹치면 늦게 시작한 항목(예: 자습 중 점호)을 고른다 */
 export function currentSlot<S extends Pick<TimetableSlotRow, "start_min" | "end_min">>(slots: readonly S[], nowMin: number): S | null {
-  return slots.find((s) => s.start_min <= nowMin && nowMin < s.end_min) ?? null;
+  let best: S | null = null;
+  for (const s of slots) {
+    if (s.start_min <= nowMin && nowMin < s.end_min && (!best || s.start_min >= best.start_min)) best = s;
+  }
+  return best;
+}
+
+/** 지금 일정 다음에 오는 항목 (없으면 null) */
+export function nextSlot<S extends Pick<TimetableSlotRow, "start_min" | "end_min">>(slots: readonly S[], nowMin: number): S | null {
+  let best: S | null = null;
+  for (const s of slots) {
+    if (s.start_min > nowMin && (!best || s.start_min < best.start_min)) best = s;
+  }
+  return best;
 }
 
 export const CATEGORY_LABELS = {

@@ -7,7 +7,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { SelectField } from "@/components/ui/select";
 import { TextField } from "@/components/ui/text-field";
 import { useSubjects } from "@/lib/data/subjects";
-import type { DdayRow, DdayType, PerfKind, PerfStatus } from "@/lib/supabase/database.types";
+import type { DdayRow, DdayType, ExamKind, PerfKind, PerfStatus } from "@/lib/supabase/database.types";
 import { fieldErrors } from "@/lib/validation/form";
 
 export const DDAY_TYPE_LABELS: Record<DdayType, string> = { exam: "시험", performance: "수행평가", etc: "기타" };
@@ -18,6 +18,12 @@ export const PERF_KIND_LABELS: Record<PerfKind, string> = {
   writing: "글쓰기",
   debate: "토론",
   etc: "기타",
+};
+export const EXAM_KIND_LABELS: Record<ExamKind, string> = { school: "내신 시험", mock: "모의고사", other: "기타 시험" };
+export const EXAM_KIND_HINTS: Record<ExamKind, string> = {
+  school: "이번 학기 내신 과목이 들어가요",
+  mock: "모의고사 과목(국어·수학·영어·한국사·통합과학·통합사회)이 들어가요",
+  other: "모든 과목 중에서 골라요",
 };
 export const PERF_STATUS_LABELS: Record<PerfStatus, string> = { todo: "시작 전", doing: "준비 중", done: "완료" };
 
@@ -31,6 +37,7 @@ export const ddaySchema = z
     status: z.enum(["todo", "doing", "done"]),
     prep_percent: z.number().int().min(0, "0~100 사이로 써 주세요").max(100, "0~100 사이로 써 주세요").nullable(),
     memo: z.string().max(500, "500자 이내로 써 주세요"),
+    exam_kind: z.enum(["school", "mock", "other"]).nullable(),
   })
   .refine((v) => v.type !== "performance" || v.subject_id, { path: ["subject_id"], message: "과목을 골라 주세요" });
 
@@ -78,6 +85,7 @@ function Body({
   const [status, setStatus] = useState<PerfStatus>(dday?.status ?? "todo");
   const [prep, setPrep] = useState(dday?.prep_percent != null ? String(dday.prep_percent) : "");
   const [memo, setMemo] = useState(dday?.memo ?? "");
+  const [examKind, setExamKind] = useState<ExamKind>(dday?.exam_kind ?? "school");
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
 
   const submit = (e: React.FormEvent) => {
@@ -91,6 +99,7 @@ function Body({
       status: type === "performance" ? status : "todo",
       prep_percent: type === "performance" && status === "doing" && prep !== "" ? Number(prep) : null,
       memo,
+      exam_kind: type === "exam" ? examKind : null,
     });
     setErrors(fieldErrors(parsed));
     if (!parsed.success) return;
@@ -126,6 +135,14 @@ function Body({
           onChange={(v) => setType(v as DdayType)}
           options={(Object.keys(DDAY_TYPE_LABELS) as DdayType[]).map((k) => ({ value: k, label: DDAY_TYPE_LABELS[k] }))}
         />
+        {type === "exam" ? (
+          <SelectField
+            label="시험 종류"
+            value={examKind}
+            onChange={(v) => setExamKind(v as ExamKind)}
+            options={(Object.keys(EXAM_KIND_LABELS) as ExamKind[]).map((k) => ({ value: k, label: EXAM_KIND_LABELS[k] }))}
+          />
+        ) : null}
         <TextField label={type === "performance" ? "제목" : "이름"} value={title} onChange={(e) => setTitle(e.target.value)} error={errors.title} />
         <div className="grid grid-cols-2 gap-3">
           <TextField
