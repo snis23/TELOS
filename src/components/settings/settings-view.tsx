@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { DayStartSetting } from "./day-start-setting";
 import { HolidaySettings } from "./holiday-settings";
 import { LogoutCard } from "./logout-card";
+import { PlanSettings } from "./plan-settings";
 import { SubjectManager } from "./subject-manager";
 import { ThemeSetting } from "./theme-setting";
 import { TimetableSettings } from "./timetable-settings";
@@ -17,6 +18,7 @@ export function SettingsView() {
         <SubjectManager />
         <TimetableSettings />
         <HolidaySettings />
+        <PlanSettings />
         <ThemeSetting />
         <DayStartSetting />
         <LogoutCard />
