@@ -7,6 +7,8 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ProgressBar } from "@/components/ui/progress";
 import { Segmented } from "@/components/ui/segmented";
+import { CardErrorBoundary } from "@/components/ui/error-boundary";
+import { Tabs, useStoredTab } from "@/components/ui/tabs";
 import { SelectField } from "@/components/ui/select";
 import { SubjectDot } from "@/components/ui/subject-dot";
 import { TextField } from "@/components/ui/text-field";
@@ -34,11 +36,26 @@ import {
 } from "@/lib/stats/summary";
 import { formatDurationKo, formatHM } from "@/lib/timer/format";
 import { napSummary, studySecondsBySubject } from "@/lib/timer/sessions";
+import { ExamRecords } from "./exam-records";
+import { InsightsCard } from "./insights-card";
+import { LearnRecords } from "./learn-records";
+
+const TABS = [
+  { value: "summary", label: "요약" },
+  { value: "study", label: "공부 시간" },
+  { value: "exam", label: "시험 대비" },
+  { value: "tasks", label: "할 일" },
+  { value: "learn", label: "오답·암기" },
+  { value: "comment", label: "하루 코멘트" },
+] as const;
+type Tab = (typeof TABS)[number]["value"];
 
 const GRASS = ["bg-surface-2", "bg-grass-1", "bg-grass-2", "bg-grass-3", "bg-grass-4"] as const;
 const GRASS_LABEL = ["기록 없음", "1시간 미만", "3시간 미만", "5시간 미만", "5시간 이상"];
 
-/** 8.1 기록 화면: 통계, 미루기 분석, 회고 모아보기 */
+/**
+ * 8.1 기록 화면: 요약(개선이 필요한 과목) · 공부 시간 · 시험 대비 · 할 일 · 오답·암기 · 하루 코멘트
+ */
 export function RecordView() {
   const { today, now } = useTimerContext();
   const dayStartHour = useDayStartHour();
@@ -48,6 +65,7 @@ export function RecordView() {
   const { data: deferrals } = useDeferrals(today);
   const subjects = useSubjectMap();
   const { data: subjectList } = useSubjects();
+  const [tab, setTab] = useStoredTab<Tab>("telos:record-tab", TABS.map((t) => t.value), "summary");
 
   // 지난 날짜는 daily_stats, 오늘은 진행 중인 기록을 합쳐서 계산 (9.1)
   const totals = useMemo(() => {
@@ -70,16 +88,37 @@ export function RecordView() {
   return (
     <>
       <PageHeader title="기록" />
-      <div className="card-stack">
-        <StatsCard totals={totals} today={today} subjects={subjects} subjectOrder={(subjectList ?? []).map((s) => s.id)} />
-        <div className="grid gap-6 pad:gap-8 land:grid-cols-2">
-          <WeekBars totals={totals} today={today} />
-          <StreakCard totals={totals} today={today} />
+      <Tabs label="기록" tabs={TABS} value={tab} onChange={setTab} className="mb-6" />
+      <CardErrorBoundary>
+        <div className="card-stack">
+          {tab === "summary" ? (
+            <>
+              <InsightsCard today={today} />
+              <div className="grid gap-6 pad:gap-8 land:grid-cols-2">
+                <WeekBars totals={totals} today={today} />
+                <StreakCard totals={totals} today={today} />
+              </div>
+            </>
+          ) : tab === "study" ? (
+            <>
+              <StatsCard totals={totals} today={today} subjects={subjects} subjectOrder={(subjectList ?? []).map((s) => s.id)} />
+              <div className="grid gap-6 pad:gap-8 land:grid-cols-2">
+                <WeekBars totals={totals} today={today} />
+                <StreakCard totals={totals} today={today} />
+              </div>
+              <GrassCard totals={totals} today={today} />
+            </>
+          ) : tab === "exam" ? (
+            <ExamRecords today={today} />
+          ) : tab === "tasks" ? (
+            <DeferCard today={today} />
+          ) : tab === "learn" ? (
+            <LearnRecords today={today} />
+          ) : (
+            <CommentArchive />
+          )}
         </div>
-        <GrassCard totals={totals} today={today} />
-        <DeferCard today={today} />
-        <ReflectionArchive />
-      </div>
+      </CardErrorBoundary>
     </>
   );
 }
@@ -305,35 +344,28 @@ function DeferCard({ today }: { today: string }) {
   );
 }
 
-/** 회고 모아보기: 최신 날짜부터. 날짜, 컨디션, 세 줄. 월 거르기와 글자 검색 */
-function ReflectionArchive() {
+/** 하루 코멘트 모아보기: 최신 날짜부터. 월 거르기와 글자 검색 */
+function CommentArchive() {
   const { data } = useAllRows("reflections", { orderBy: "study_date" });
   const [month, setMonth] = useState("");
   const [q, setQ] = useState("");
-  const list = [...(data ?? [])].reverse();
+  const list = [...(data ?? [])].filter((r) => r.comment.trim()).reverse();
   const months = [...new Set(list.map((r) => r.study_date.slice(0, 7)))];
-  const shown = list.filter(
-    (r) => (!month || r.study_date.startsWith(month)) && (!q.trim() || `${r.good} ${r.bad} ${r.tomorrow}`.includes(q.trim())),
-  );
+  const shown = list.filter((r) => (!month || r.study_date.startsWith(month)) && (!q.trim() || r.comment.includes(q.trim())));
   return (
-    <Card title="회고 모아보기">
+    <Card title="하루 코멘트 모아보기">
       <div className="mb-4 grid grid-cols-2 gap-3 pad:max-w-portrait">
         <SelectField label="월" value={month} onChange={setMonth} options={[{ value: "", label: "전체" }, ...months.map((m) => ({ value: m, label: `${m.slice(0, 4)}년 ${Number(m.slice(5))}월` }))]} />
         <TextField label="검색" type="search" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       {shown.length === 0 ? (
-        <EmptyState message="아직 쓴 회고가 없어요" />
+        <EmptyState message="아직 쓴 하루 코멘트가 없어요" />
       ) : (
         <ul className="flex flex-col">
           {shown.map((r) => (
             <li key={r.id} className="flex flex-col gap-1 border-b border-line py-3 last:border-b-0">
-              <p className="flex items-center gap-2 text-12 text-sub">
-                {formatMonthDayWeekday(r.study_date)}
-                {r.condition ? <span className="num rounded-full bg-nav-on px-2 text-11 text-accent-strong">컨디션 {r.condition}</span> : null}
-              </p>
-              {r.good ? <p className="text-13 text-ink-2">잘한 것 · {r.good}</p> : null}
-              {r.bad ? <p className="text-13 text-ink-2">아쉬운 것 · {r.bad}</p> : null}
-              {r.tomorrow ? <p className="text-13 text-ink-2">내일 할 것 · {r.tomorrow}</p> : null}
+              <p className="text-12 text-sub">{formatMonthDayWeekday(r.study_date)}</p>
+              <p className="whitespace-pre-line text-13 text-ink-2">{r.comment}</p>
             </li>
           ))}
         </ul>
@@ -341,4 +373,3 @@ function ReflectionArchive() {
     </Card>
   );
 }
-

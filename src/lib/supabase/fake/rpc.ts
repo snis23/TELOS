@@ -1,7 +1,7 @@
 /**
  * 가짜 백엔드의 앱용 함수 (supabase/telos.sql 의 함수와 같은 동작).
  */
-import { DEFAULT_HOLIDAYS, DEFAULT_SUBJECTS, DEFAULT_TIMETABLES, clockToDayMin } from "@/lib/defaults";
+import { DEFAULT_HOLIDAYS, DEFAULT_TIMETABLES, MOCK_SUBJECTS, clockToDayMin } from "@/lib/defaults";
 import { computeDailyStats } from "@/lib/stats/daily";
 import { BACKUP_TABLES, type TableName } from "../database.types";
 import { HAS_TRASH, PURGE_ORDER } from "./schema";
@@ -14,10 +14,10 @@ const REORDER_TABLES = new Set<TableName>([
   "subjects",
   "units",
   "tasks",
-  "goals",
   "ddays",
   "timetables",
-  "range_items",
+  "exam_subjects",
+  "roadmap_items",
   "flash_decks",
   "flash_cards",
   "wrong_note_photos",
@@ -30,13 +30,11 @@ function addDays(date: string, days: number): string {
 }
 
 function bootstrap(store: FakeStore) {
-  const created = store.insert("profiles", [{ user_id: store.userId }], { cols: ["user_id"], ignore: true });
-  if (created.length > 0) {
-    store.insert(
-      "subjects",
-      DEFAULT_SUBJECTS.map((s, i) => ({ ...s, sort_order: i })),
-    );
-  }
+  store.insert("profiles", [{ user_id: store.userId }], { cols: ["user_id"], ignore: true });
+  // 모의고사 과목은 고정: 빠진 것만 채운다
+  const have = new Set(store.visible("subjects").filter((s) => s.kind === "mock" && s.deleted_at == null).map((s) => s.name));
+  const missing = MOCK_SUBJECTS.map((s, i) => ({ ...s, kind: "mock", sort_order: i })).filter((s) => !have.has(s.name));
+  if (missing.length) store.insert("subjects", missing);
   const profile = store.visible("profiles")[0];
   const h = Number(profile?.day_start_hour ?? 6);
   if (store.visible("timetables").length === 0) {
@@ -83,30 +81,16 @@ function trashItem(store: FakeStore, args: Args) {
   };
   mark(table, (r) => r.id === id);
   if (table === "subjects") {
-    for (const t of ["wrong_notes", "units", "school_grades", "mock_scores", "targets", "range_items"] as const) {
+    for (const t of ["wrong_notes", "units", "exam_subjects", "roadmap_items"] as const) {
       mark(t, (r) => r.subject_id === id);
     }
   } else if (table === "units") {
     mark("wrong_notes", (r) => r.unit_id === id);
   } else if (table === "mock_rounds") {
     mark("wrong_notes", (r) => r.mock_round_id === id);
-    mark("mock_scores", (r) => r.mock_round_id === id);
   } else if (table === "ddays") {
-    mark("range_items", (r) => r.dday_id === id);
-  } else if (table === "goals") {
-    const ids = new Set<unknown>([id]);
-    let grew = true;
-    while (grew) {
-      grew = false;
-      for (const g of store.visible("goals")) {
-        if (g.parent_id && ids.has(g.parent_id) && !ids.has(g.id)) {
-          ids.add(g.id);
-          grew = true;
-        }
-      }
-    }
-    ids.delete(id);
-    mark("goals", (r) => ids.has(r.id));
+    mark("exam_subjects", (r) => r.dday_id === id);
+    mark("roadmap_items", (r) => r.dday_id === id);
   } else if (table === "flash_decks") {
     mark("flash_cards", (r) => r.deck_id === id);
   } else if (table === "timetables") {
@@ -211,18 +195,12 @@ const RESTORE_INSERT_ORDER: readonly TableName[] = [
   "reflections",
   "daily_stats",
   "timer_sessions",
-  "records",
-  "targets",
-  "school_grades",
-  "mock_scores",
   "ddays",
-  "goals",
+  "exam_subjects",
+  "roadmap_items",
   "recurrences",
-  "exam_subject_dates",
-  "range_items",
   "tasks",
   "task_deferrals",
-  "review_checks",
   "flash_decks",
   "flash_cards",
   "wrong_notes",
@@ -231,7 +209,7 @@ const RESTORE_INSERT_ORDER: readonly TableName[] = [
 
 function restoreBackup(store: FakeStore, args: Args) {
   const backup = args.p_backup as { app?: string; version?: number; profile?: Row; tables?: Record<string, Row[]> };
-  if (backup?.app !== "telos" || backup.version !== 1) {
+  if (backup?.app !== "telos" || backup.version !== 2) {
     throw new FakeError(pgError("22023", "not a Telos backup"));
   }
   store.txNow = new Date().toISOString();
@@ -246,7 +224,7 @@ function restoreBackup(store: FakeStore, args: Args) {
     if (pending.length) store.delete("pending_file_deletions", pending);
     const profile = store.visible("profiles")[0];
     if (profile && backup.profile) {
-      const keys = ["theme", "day_start_hour", "sem1_start", "sem1_end", "sem2_start", "sem2_end", "auto_range_tasks", "sidebar_collapsed"];
+      const keys = ["theme", "day_start_hour", "sem1_start", "sem1_end", "sem2_start", "sem2_end", "entry_year", "reviewed_term", "sidebar_collapsed"];
       const patch: Row = {};
       for (const k of keys) if (backup.profile[k] != null) patch[k] = backup.profile[k];
       store.update("profiles", [profile], patch);

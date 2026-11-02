@@ -42,9 +42,9 @@ export function sortTasks<X extends Sortable>(tasks: readonly X[]): X[] {
   });
 }
 
-/** 넘기기·가져오기 대상이 되는 "일반 할 일" (반복·범위 분배는 매일 다시 만든다) */
+/** 넘기기·가져오기 대상이 되는 "일반 할 일" (반복 할 일은 매일 다시 만든다) */
 export function isPlainTask(task: Pick<TaskRow, "source">): boolean {
-  return task.source === "manual" || task.source === "goal";
+  return task.source === "manual" || task.source === "roadmap";
 }
 
 /** 한 번에 넘기기 대상: 안 끝낸 일반 할 일, 오늘 꼭 하기 제외 (5.6) */

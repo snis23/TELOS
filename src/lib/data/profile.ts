@@ -5,6 +5,7 @@ import { useUserId } from "@/lib/auth/auth-provider";
 import { requireSupabase } from "@/lib/supabase/client";
 import type { ProfileRow } from "@/lib/supabase/database.types";
 import { DEFAULT_DAY_START_HOUR } from "@/lib/date/study-date";
+import { termOf, type Term } from "@/lib/subjects/subjects";
 import { useTableMutations } from "./crud";
 
 export const profileKey = ["profiles", "me"] as const;
@@ -42,4 +43,14 @@ export function useUpdateProfile() {
     },
     isPending: update.isPending,
   };
+}
+
+/** 오늘(공부 날짜)이 속한 학기와 학년 (입학 연도가 없으면 학년은 null) */
+export function useTerm(today: string): Term {
+  const { data: profile } = useProfile();
+  return termOf(
+    today,
+    { sem1_start: profile?.sem1_start ?? "03-01", sem2_start: profile?.sem2_start ?? "08-01" },
+    profile?.entry_year ?? null,
+  );
 }

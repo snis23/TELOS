@@ -66,3 +66,11 @@ export function useInView<T extends Element>(): [React.RefObject<T | null>, bool
   }, [seen]);
   return [ref, seen];
 }
+
+/** 과목별 단원 (내신 오답노트를 단원으로 나눈다) */
+export function useUnits() {
+  return useAllRows("units", { orderBy: "sort_order" });
+}
+export function useUnitMutations() {
+  return useTableMutations("units");
+}

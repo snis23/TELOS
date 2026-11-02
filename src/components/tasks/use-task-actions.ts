@@ -10,7 +10,7 @@ import { ensureRecurrenceTasks, tasksKey, useDefer, useTaskMutations } from "@/l
 import { useDayTimetable } from "@/lib/data/timetable";
 import { addDays } from "@/lib/date/days";
 import { requireSupabase } from "@/lib/supabase/client";
-import type { TaskRow } from "@/lib/supabase/database.types";
+import type { RoadmapItemRow, TaskRow } from "@/lib/supabase/database.types";
 import { matchSlot } from "@/lib/timetable/grid";
 import { ruleFromForm, type TaskFormValues } from "./task-dialog";
 
@@ -25,6 +25,7 @@ export function useTaskActions(date: string, tasks: readonly TaskRow[]) {
   const { slots } = useDayTimetable(date);
   const { insert, update, trash, restore, reorder } = useTaskMutations();
   const recurrences = useTableMutations("recurrences");
+  const roadmap = useTableMutations("roadmap_items");
   const { defer } = useDefer();
   const nextOrder = () => tasks.reduce((m, t) => Math.max(m, t.sort_order), -1) + 1;
 
@@ -150,16 +151,38 @@ export function useTaskActions(date: string, tasks: readonly TaskRow[]) {
 
   const toggleDone = useCallback(
     (task: TaskRow, done: boolean) => {
-      update.mutate({ ids: [task.id], patch: { done_at: done ? new Date().toISOString() : null } });
-      if (task.range_item_id && task.range_start_no !== null && task.range_end_no !== null) {
-        // 범위 분배에서 온 할 일: 체크하면 범위 진행률에 반영 (6.5)
-        void applyRangeProgress(task.range_item_id, (task.range_end_no - task.range_start_no + 1) * (done ? 1 : -1)).then(
-          () => queryClient.invalidateQueries({ queryKey: ["range_items"] }),
-          (error) => onSaveError(error),
-        );
-      }
+      const doneAt = done ? new Date().toISOString() : null;
+      update.mutate({ ids: [task.id], patch: { done_at: doneAt } });
+      // 로드맵에서 가져온 할 일: 로드맵 칸도 같이 체크한다 (진행표·회독에 반영)
+      if (task.roadmap_item_id) roadmap.update.mutate({ ids: [task.roadmap_item_id], patch: { done_at: doneAt } });
     },
-    [update, queryClient, onSaveError],
+    [update, roadmap.update],
+  );
+
+  /** 로드맵 칸을 오늘 할 일로 넣는다. slotId 를 주면 그 차시에 배정한다 */
+  const addFromRoadmap = useCallback(
+    (items: readonly RoadmapItemRow[], slotId: string | null) => {
+      const slot = slots.find((s) => s.id === slotId) ?? null;
+      const start = nextOrder();
+      insert.mutate({
+        rows: items.map((it, i) => ({
+          id: newId(),
+          title: it.content,
+          subject_id: it.subject_id,
+          study_date: date,
+          sort_order: start + i,
+          source: "roadmap" as const,
+          roadmap_item_id: it.id,
+          slot_id: slot?.id ?? null,
+          start_min: slot?.start_min ?? null,
+          end_min: slot?.end_min ?? null,
+        })),
+        appendTo: tasksKey(date),
+      });
+      toast.show({ message: items.length > 1 ? `로드맵 계획 ${items.length}개를 할 일에 넣었어요` : "로드맵 계획을 할 일에 넣었어요" });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [date, tasks, slots, insert, toast],
   );
 
   const deferOne = useCallback(
@@ -222,18 +245,21 @@ export function useTaskActions(date: string, tasks: readonly TaskRow[]) {
     [update, slots],
   );
 
-  return { add, edit, remove, toggleDone, deferOne, deferMany, bringToToday, setMustDo, split, reorderTasks, setBlock, assignSlot };
-}
-
-/** 범위 항목의 끝낸 양을 더하거나 뺀다 (0 아래로는 내려가지 않는다) */
-async function applyRangeProgress(rangeItemId: string, delta: number) {
-  const supabase = requireSupabase();
-  const { data, error } = await supabase.from("range_items").select("done_amount").eq("id", rangeItemId).maybeSingle();
-  if (error) throw error;
-  if (!data) return;
-  const next = Math.max(0, data.done_amount + delta);
-  const res = await supabase.from("range_items").update({ done_amount: next }).eq("id", rangeItemId);
-  if (res.error) throw res.error;
+  return {
+    add,
+    edit,
+    remove,
+    toggleDone,
+    addFromRoadmap,
+    deferOne,
+    deferMany,
+    bringToToday,
+    setMustDo,
+    split,
+    reorderTasks,
+    setBlock,
+    assignSlot,
+  };
 }
 
 export type TaskActions = ReturnType<typeof useTaskActions>;

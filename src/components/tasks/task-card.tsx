@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { CalendarRange, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { RoadmapPicker } from "@/components/roadmap/roadmap-picker";
 import { useTimerContext } from "@/components/timer/timer-provider";
 import { Button, IconButton } from "@/components/ui/button";
 import { CardErrorBoundary } from "@/components/ui/error-boundary";
@@ -70,6 +71,7 @@ export function TaskCard() {
   const [dialog, setDialog] = useState<{ task?: TaskRow; defaults?: Partial<TaskRow> } | null>(null);
   const [pending, setPending] = useState<Pending>(null);
   const [splitting, setSplitting] = useState<TaskRow | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [staleDismissed, setStaleDismissed] = useState(() => {
     try {
       return window.localStorage.getItem(STALE_KEY) === today;
@@ -116,10 +118,16 @@ export function TaskCard() {
               {done}/{tasks.length}
             </span>
           </h2>
-          <Button variant="primary" pill onClick={() => openAdd()} aria-keyshortcuts="A">
-            <Plus size={ICON_SIZE.inline} strokeWidth={ICON_STROKE} aria-hidden />
-            추가
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" pill onClick={() => setPickerOpen(true)}>
+              <CalendarRange size={ICON_SIZE.inline} strokeWidth={ICON_STROKE} aria-hidden />
+              로드맵에서
+            </Button>
+            <Button variant="primary" pill onClick={() => openAdd()} aria-keyshortcuts="A">
+              <Plus size={ICON_SIZE.inline} strokeWidth={ICON_STROKE} aria-hidden />
+              추가
+            </Button>
+          </div>
         </div>
         <ProgressBar value={tasks.length ? done / tasks.length : 0} label="할 일 진행률" />
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -273,6 +281,7 @@ export function TaskCard() {
         }}
       />
       <SplitDialog task={splitting} onClose={() => setSplitting(null)} onSplit={(titles) => splitting && actions.split(splitting, titles)} />
+      <RoadmapPicker open={pickerOpen} onClose={() => setPickerOpen(false)} date={viewDate} />
     </section>
   );
 }

@@ -1,7 +1,7 @@
 import type { KeyCombo } from "./guard";
 
-/** Alt(Option) + 1~6: 메뉴 이동 (오늘, 계획, 시험, 학습, 기록, 성적) */
-export const NAV_COMBOS: readonly KeyCombo[] = [1, 2, 3, 4, 5, 6].map((n) => ({
+/** Alt(Option) + 1~5: 메뉴 이동 (오늘, 시험 대비, 계획, 학습, 기록) */
+export const NAV_COMBOS: readonly KeyCombo[] = [1, 2, 3, 4, 5].map((n) => ({
   code: `Digit${n}`,
   alt: true,
 }));
@@ -27,7 +27,7 @@ export const SHORTCUT_ROWS: readonly ShortcutRow[] = [
   { keys: ["Shift", "D"], label: "못 한 일 내일로 넘기기", ready: true },
   { keys: ["V"], label: "할 일 보기 전환", ready: true },
   { keys: ["←", "→"], label: "전날 / 다음 날", ready: true },
-  { keys: ["Alt(⌥)", "1~6"], label: "메뉴 이동", ready: true },
+  { keys: ["Alt(⌥)", "1~5"], label: "메뉴 이동", ready: true },
   { keys: ["Shift", "T"], label: "다크 모드 전환", ready: true },
   { keys: ["Esc"], label: "창 닫기, 집중 모드 나가기", ready: true },
 ];

@@ -1,8 +1,10 @@
 -- ============================================================================
--- Telos 데이터베이스 전체 설정 (Phase 1~6)
+-- Telos 데이터베이스 전체 설정 (Phase 1~6 + 1차 수정)
 --
 -- 사용법: Supabase 대시보드 > SQL Editor > New query 에 이 파일 전체를 붙여 넣고 Run.
 --   - 여러 번 실행해도 안전하다. 이미 있는 테이블·데이터는 그대로 두고, 함수·정책은 새로 만든다.
+--   - 이전 버전으로 만든 데이터베이스에 실행하면 2.99 의 업그레이드가 새 구조로 바꾼다
+--     (성적·생기부·목표 로드맵·범위 분배·회독 표는 지우고, 과목은 모의고사/내신으로 나눈다).
 --   - 매일 자동 작업(pg_cron)은 확장을 먼저 켜야 등록된다. 꺼져 있으면 맨 아래에서 안내만 하고 넘어간다.
 --
 -- 규칙 (spec.md 9장)
@@ -45,7 +47,9 @@ create table if not exists public.profiles (
   sem1_end text not null default '07-31',
   sem2_start text not null default '08-01',
   sem2_end text not null default '02-29',
-  auto_range_tasks boolean not null default true,
+  -- 입학 연도 (학년 계산용) / 마지막으로 내신 과목을 정리한 학기 ("2-1" = 2학년 1학기)
+  entry_year smallint,
+  reviewed_term text,
   sidebar_collapsed boolean not null default false,
   last_backup_at timestamptz,
   created_at timestamptz not null default now(),
@@ -53,6 +57,8 @@ create table if not exists public.profiles (
   constraint profiles_user_id_key unique (user_id),
   constraint profiles_theme_check check (theme in ('light', 'dark', 'system')),
   constraint profiles_day_start_hour_check check (day_start_hour between 0 and 12),
+  constraint profiles_entry_year_check check (entry_year is null or entry_year between 2000 and 2100),
+  constraint profiles_reviewed_term_check check (reviewed_term is null or reviewed_term ~ '^[1-3]-[12]$'),
   constraint profiles_semester_check check (
     sem1_start ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
     and sem1_end ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
@@ -62,17 +68,18 @@ create table if not exists public.profiles (
 );
 
 -- 2.2 subjects: 과목 ----------------------------------------------------------
+--   kind = 'mock': 모의고사 과목 (국어·수학·영어·한국사·통합과학·통합사회, 고정)
+--   kind = 'school': 내신 과목. term 은 처음 배운 학기("1-2"), 학기가 끝나면 보관(archived_at)한다.
+--   보관한 과목은 고르는 목록에서만 빠지고 기록(오답·공부 시간·로드맵)은 그대로 남는다.
 create table if not exists public.subjects (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name text not null,
   color_key text not null,
   sort_order integer not null default 0,
-  show_in_school_notes boolean not null default true,
-  show_in_mock_notes boolean not null default false,
-  mock_max_score smallint,
-  has_percentile boolean not null default false,
-  hidden_at timestamptz,
+  kind text not null default 'school',
+  term text,
+  archived_at timestamptz,
   deleted_at timestamptz,
   delete_batch_id uuid,
   created_at timestamptz not null default now(),
@@ -81,9 +88,9 @@ create table if not exists public.subjects (
   constraint subjects_color_key_check check (
     color_key in ('rose', 'periwinkle', 'mint', 'butter', 'lavender', 'peach', 'sky', 'sage')
   ),
-  constraint subjects_mock_max_score_check check (mock_max_score is null or mock_max_score between 1 and 100)
+  constraint subjects_kind_check check (kind in ('mock', 'school')),
+  constraint subjects_term_check check (term is null or term ~ '^[1-3]-[12]$')
 );
-create unique index if not exists subjects_name_key on public.subjects (user_id, name) where deleted_at is null;
 
 -- 2.3 units: 과목별 단원 (6.1) -------------------------------------------------
 create table if not exists public.units (
@@ -198,32 +205,10 @@ create table if not exists public.recurrences (
   )
 );
 
--- 2.7 goals: 로드맵 (6.2) ------------------------------------------------------
-create table if not exists public.goals (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
-  title text not null,
-  subject_id uuid references public.subjects (id) on delete set null,
-  level text not null,
-  start_date date not null,
-  end_date date not null,
-  parent_id uuid references public.goals (id) on delete cascade,
-  sort_order integer not null default 0,
-  done_at timestamptz,
-  memo text,
-  deleted_at timestamptz,
-  delete_batch_id uuid,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint goals_title_check check (title = btrim(title) and char_length(title) between 1 and 60),
-  constraint goals_level_check check (level in ('long', 'month', 'week')),
-  constraint goals_dates_check check (start_date <= end_date),
-  constraint goals_memo_check check (memo is null or char_length(memo) <= 500),
-  constraint goals_parent_check check (parent_id is null or parent_id <> id)
-);
-create index if not exists goals_parent_idx on public.goals (parent_id);
-
--- 2.8 ddays / exam_subject_dates (5.3, 6.5) ------------------------------------
+-- 2.7 ddays / exam_subjects / roadmap_items: 일정과 시험 대비 로드맵 (5.3, 6장) ----
+--   시험(type = 'exam')은 하나가 "시험 대비 카테고리"다. exam_kind 로 과목 목록을 나눈다
+--   (school: 이번 학기 내신 과목, mock: 모의고사 과목, other: 모든 과목).
+--   끝난 시험도 기록 화면에 남도록 지우지 않는다.
 create table if not exists public.ddays (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
@@ -237,8 +222,7 @@ create table if not exists public.ddays (
   prep_percent smallint,
   perf_kind text,
   memo text,
-  review_days smallint not null default 3,
-  off_weekdays smallint[] not null default '{}',
+  exam_kind text,
   deleted_at timestamptz,
   delete_batch_id uuid,
   created_at timestamptz not null default now(),
@@ -251,68 +235,49 @@ create table if not exists public.ddays (
     perf_kind is null or perf_kind in ('report', 'presentation', 'experiment', 'writing', 'debate', 'etc')
   ),
   constraint ddays_memo_check check (memo is null or char_length(memo) <= 500),
-  constraint ddays_review_days_check check (review_days between 0 and 30),
-  constraint ddays_off_weekdays_check check (off_weekdays <@ array[1, 2, 3, 4, 5, 6, 7]::smallint[])
+  constraint ddays_exam_kind_check check (exam_kind is null or exam_kind in ('school', 'mock', 'other'))
 );
 
-create table if not exists public.exam_subject_dates (
+-- 시험에 들어가는 과목: 과목별 시험 날짜(없으면 시험 첫날)와 시험 범위 메모
+create table if not exists public.exam_subjects (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   dday_id uuid not null references public.ddays (id) on delete cascade,
   subject_id uuid not null references public.subjects (id) on delete cascade,
-  date date not null,
-  deleted_at timestamptz,
-  delete_batch_id uuid,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-create unique index if not exists exam_subject_dates_key
-  on public.exam_subject_dates (dday_id, subject_id) where deleted_at is null;
-
--- 2.9 range_items / review_checks: 범위 분배, 회독 (6.5) -----------------------
-create table if not exists public.range_items (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
-  dday_id uuid not null references public.ddays (id) on delete cascade,
-  subject_id uuid not null references public.subjects (id) on delete cascade,
-  name text not null,
-  unit_label text not null default 'page',
-  start_no integer not null,
-  end_no integer not null,
-  done_amount integer not null default 0,
+  exam_date date,
+  range_note text,
   sort_order integer not null default 0,
-  default_slot_name text,
-  default_start_min smallint,
   deleted_at timestamptz,
   delete_batch_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint range_items_name_check check (name = btrim(name) and char_length(name) between 1 and 40),
-  constraint range_items_unit_check check (unit_label in ('page', 'unit', 'chapter', 'problem')),
-  constraint range_items_no_check check (start_no >= 0 and start_no <= end_no and end_no <= 100000),
-  constraint range_items_done_check check (done_amount >= 0),
-  constraint range_items_start_min_check check (
-    default_start_min is null or (default_start_min between 0 and 1430 and default_start_min % 10 = 0)
-  )
+  constraint exam_subjects_range_check check (range_note is null or char_length(range_note) <= 500)
 );
-create index if not exists range_items_dday_idx on public.range_items (dday_id);
+create unique index if not exists exam_subjects_key
+  on public.exam_subjects (dday_id, subject_id) where deleted_at is null;
 
-create table if not exists public.review_checks (
+-- 로드맵 달력의 한 칸: 날짜 + 과목 + 무슨 공부. round 는 회독(1~5회독, 없으면 null)
+create table if not exists public.roadmap_items (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   dday_id uuid not null references public.ddays (id) on delete cascade,
-  unit_id uuid not null references public.units (id) on delete cascade,
-  round1 boolean not null default false,
-  round2 boolean not null default false,
-  round3 boolean not null default false,
+  subject_id uuid not null references public.subjects (id) on delete cascade,
+  study_date date not null,
+  content text not null,
+  round smallint,
+  done_at timestamptz,
+  sort_order integer not null default 0,
   deleted_at timestamptz,
   delete_batch_id uuid,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint roadmap_items_content_check check (content = btrim(content) and char_length(content) between 1 and 80),
+  constraint roadmap_items_round_check check (round is null or round between 1 and 5)
 );
-create unique index if not exists review_checks_key on public.review_checks (dday_id, unit_id) where deleted_at is null;
+create index if not exists roadmap_items_dday_date_idx on public.roadmap_items (dday_id, study_date);
 
--- 2.10 tasks: 할 일 (5.6) ------------------------------------------------------
+-- 2.8 tasks: 할 일 (5.6) -------------------------------------------------------
+--   source = 'roadmap' 이면 로드맵 칸에서 골라 넣은 할 일. 체크하면 로드맵 칸도 끝낸 것으로 바뀐다.
 create table if not exists public.tasks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
@@ -330,32 +295,25 @@ create table if not exists public.tasks (
   slot_id uuid references public.timetable_slots (id) on delete set null,
   source text not null default 'manual',
   recurrence_id uuid references public.recurrences (id) on delete set null,
-  range_item_id uuid references public.range_items (id) on delete set null,
-  range_start_no integer,
-  range_end_no integer,
-  goal_id uuid references public.goals (id) on delete set null,
+  roadmap_item_id uuid references public.roadmap_items (id) on delete set null,
   deleted_at timestamptz,
   delete_batch_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint tasks_title_check check (title = btrim(title) and char_length(title) between 1 and 60),
+  constraint tasks_title_check check (title = btrim(title) and char_length(title) between 1 and 80),
   constraint tasks_est_check check (est_minutes is null or est_minutes between 5 and 600),
   constraint tasks_counts_check check (deferred_count >= 0 and missed_streak >= 0),
-  constraint tasks_source_check check (source in ('manual', 'recurrence', 'range', 'goal')),
+  constraint tasks_source_check check (source in ('manual', 'recurrence', 'roadmap')),
   constraint tasks_block_check check (
     (start_min is null and end_min is null)
     or (start_min >= 0 and end_min <= 1440 and start_min < end_min and start_min % 10 = 0 and end_min % 10 = 0)
   ),
-  constraint tasks_range_check check (
-    (range_start_no is null and range_end_no is null) or (range_start_no <= range_end_no)
-  ),
-  -- 같은 반복·같은 날짜, 같은 범위·같은 날짜는 하나만 (지운 것 포함: "이번만 삭제"한 날은 다시 만들지 않는다)
-  constraint tasks_recurrence_date_key unique (recurrence_id, study_date),
-  constraint tasks_range_date_key unique (range_item_id, study_date)
+  -- 같은 반복·같은 날짜는 하나만 (지운 것 포함: "이번만 삭제"한 날은 다시 만들지 않는다)
+  constraint tasks_recurrence_date_key unique (recurrence_id, study_date)
 );
 create index if not exists tasks_user_date_idx on public.tasks (user_id, study_date);
 
--- 2.11 task_deferrals: 미룬 기록 (5.7, 8.1 실행률·미루기 분석) ----------------
+-- 2.9 task_deferrals: 미룬 기록 (5.7, 8.1 실행률·미루기 분석) ----------------
 create table if not exists public.task_deferrals (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
@@ -369,7 +327,7 @@ create table if not exists public.task_deferrals (
 );
 create index if not exists task_deferrals_user_from_idx on public.task_deferrals (user_id, from_date);
 
--- 2.12 timer_sessions: 공부·쪽잠 기록 (5.4, 5.5) -------------------------------
+-- 2.10 timer_sessions: 공부·쪽잠 기록 (5.4, 5.5) -------------------------------
 create table if not exists public.timer_sessions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
@@ -391,7 +349,7 @@ create unique index if not exists timer_sessions_one_active
   on public.timer_sessions (user_id) where ended_at is null and deleted_at is null;
 create index if not exists timer_sessions_user_started_idx on public.timer_sessions (user_id, started_at);
 
--- 2.13 daily_stats: 하루 합계 (계속 보관) --------------------------------------
+-- 2.11 daily_stats: 하루 합계 (계속 보관) --------------------------------------
 --   subject_id 가 있는 행: 그 과목 순공 / subject_id 가 null 인 행: 쪽잠·할 일 합계
 --   과목을 완전히 지워도 통계는 남도록 외래 키를 걸지 않는다
 create table if not exists public.daily_stats (
@@ -414,27 +372,21 @@ create table if not exists public.daily_stats (
   constraint daily_stats_key unique nulls not distinct (user_id, study_date, subject_id)
 );
 
--- 2.14 reflections: 하루 회고 (5.8) --------------------------------------------
+-- 2.12 reflections: 하루 코멘트 (5.8) ------------------------------------------
 create table if not exists public.reflections (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   study_date date not null,
-  good text not null default '',
-  bad text not null default '',
-  tomorrow text not null default '',
-  condition smallint,
+  comment text not null default '',
   deleted_at timestamptz,
   delete_batch_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint reflections_text_check check (
-    char_length(good) <= 200 and char_length(bad) <= 200 and char_length(tomorrow) <= 200
-  ),
-  constraint reflections_condition_check check (condition is null or condition between 1 and 5)
+  constraint reflections_comment_check check (char_length(comment) <= 500)
 );
 create unique index if not exists reflections_date_key on public.reflections (user_id, study_date) where deleted_at is null;
 
--- 2.15 mock_rounds: 모의고사 회차 (8.3) ----------------------------------------
+-- 2.13 mock_rounds: 모의고사 회차 (8.3) ----------------------------------------
 create table if not exists public.mock_rounds (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
@@ -451,7 +403,7 @@ create table if not exists public.mock_rounds (
 );
 create unique index if not exists mock_rounds_key on public.mock_rounds (user_id, year, month, name) where deleted_at is null;
 
--- 2.16 wrong_notes / wrong_note_photos: 오답노트 (7장) -------------------------
+-- 2.14 wrong_notes / wrong_note_photos: 오답노트 (7장) -------------------------
 create table if not exists public.wrong_notes (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
@@ -499,7 +451,7 @@ create table if not exists public.wrong_note_photos (
 );
 create index if not exists wrong_note_photos_note_idx on public.wrong_note_photos (note_id);
 
--- 2.17 flash_decks / flash_cards: 암기 카드 (7.4) ------------------------------
+-- 2.15 flash_decks / flash_cards: 암기 카드 (7.4) ------------------------------
 create table if not exists public.flash_decks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
@@ -530,98 +482,7 @@ create table if not exists public.flash_cards (
 );
 create index if not exists flash_cards_deck_idx on public.flash_cards (deck_id);
 
--- 2.18 school_grades: 내신 (8.2) -----------------------------------------------
-create table if not exists public.school_grades (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
-  year smallint not null,
-  semester smallint not null,
-  subject_id uuid not null references public.subjects (id) on delete cascade,
-  credits smallint not null,
-  raw_score numeric(4, 1) not null,
-  subject_avg numeric(4, 1),
-  achievement text,
-  rank integer,
-  tie_count integer not null default 1,
-  total_students integer,
-  grade smallint,
-  grade_manual boolean not null default false,
-  deleted_at timestamptz,
-  delete_batch_id uuid,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint school_grades_year_check check (year between 1 and 3),
-  constraint school_grades_semester_check check (semester between 1 and 2),
-  constraint school_grades_credits_check check (credits between 1 and 8),
-  constraint school_grades_raw_check check (raw_score between 0 and 100),
-  constraint school_grades_avg_check check (subject_avg is null or subject_avg between 0 and 100),
-  constraint school_grades_achievement_check check (achievement is null or achievement in ('A', 'B', 'C', 'D', 'E')),
-  constraint school_grades_rank_check check (
-    (rank is null and total_students is null)
-    or (rank >= 1 and total_students >= 1 and rank <= total_students)
-  ),
-  constraint school_grades_tie_check check (tie_count >= 1),
-  constraint school_grades_grade_check check (grade is null or grade between 1 and 5)
-);
-create unique index if not exists school_grades_key
-  on public.school_grades (user_id, year, semester, subject_id) where deleted_at is null;
-
--- 2.19 mock_scores: 모의고사 점수 (8.3) ----------------------------------------
-create table if not exists public.mock_scores (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
-  mock_round_id uuid not null references public.mock_rounds (id) on delete cascade,
-  subject_id uuid not null references public.subjects (id) on delete cascade,
-  raw_score numeric(4, 1),
-  percentile numeric(4, 1),
-  grade smallint,
-  deleted_at timestamptz,
-  delete_batch_id uuid,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint mock_scores_raw_check check (raw_score is null or raw_score between 0 and 100),
-  constraint mock_scores_percentile_check check (percentile is null or percentile between 0 and 100),
-  constraint mock_scores_grade_check check (grade is null or grade between 1 and 9),
-  constraint mock_scores_any_check check (raw_score is not null or percentile is not null or grade is not null)
-);
-create unique index if not exists mock_scores_key
-  on public.mock_scores (mock_round_id, subject_id) where deleted_at is null;
-
--- 2.20 targets: 목표 등급 (8.4) ------------------------------------------------
-create table if not exists public.targets (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
-  subject_id uuid not null references public.subjects (id) on delete cascade,
-  school_target smallint,
-  mock_target smallint,
-  deleted_at timestamptz,
-  delete_batch_id uuid,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint targets_school_check check (school_target is null or school_target between 1 and 5),
-  constraint targets_mock_check check (mock_target is null or mock_target between 1 and 9)
-);
-create unique index if not exists targets_subject_key on public.targets (subject_id) where deleted_at is null;
-
--- 2.21 records: 생기부 기록 (8.5) ----------------------------------------------
-create table if not exists public.records (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
-  kind text not null,
-  subject_id uuid references public.subjects (id) on delete set null,
-  title text not null,
-  date date not null,
-  content text not null default '',
-  deleted_at timestamptz,
-  delete_batch_id uuid,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint records_kind_check check (kind in ('seteuk', 'reading', 'club', 'etc')),
-  constraint records_title_check check (title = btrim(title) and char_length(title) between 1 and 60),
-  constraint records_content_check check (char_length(content) <= 2000)
-);
-
--- 2.22 pending_file_deletions: 지울 사진 파일 (9.3) ----------------------------
+-- 2.16 pending_file_deletions: 지울 사진 파일 (9.3) ----------------------------
 create table if not exists public.pending_file_deletions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
@@ -630,13 +491,175 @@ create table if not exists public.pending_file_deletions (
   updated_at timestamptz not null default now()
 );
 
--- 2.23 maintenance_runs: 매일 자동 작업 기록 (9.3) -----------------------------
+-- 2.17 maintenance_runs: 매일 자동 작업 기록 (9.3) -----------------------------
 create table if not exists public.maintenance_runs (
   id bigint generated always as identity primary key,
   ran_at timestamptz not null default now(),
   ok boolean not null,
   detail text
 );
+
+
+-- ============================================================================
+-- 2.99 이전 버전에서 올리기
+--   처음 설치하면 아무것도 바뀌지 않는다. 이전 버전 DB 에 실행하면 새 구조로 바꾼다.
+--   여러 번 실행해도 결과가 같다. 데이터를 옮기는 부분은 옛 열(profiles.auto_range_tasks)이
+--   남아 있을 때 한 번만 한다.
+-- ============================================================================
+
+-- (1) 새 열
+alter table public.profiles add column if not exists entry_year smallint;
+alter table public.profiles add column if not exists reviewed_term text;
+alter table public.subjects add column if not exists kind text not null default 'school';
+alter table public.subjects add column if not exists term text;
+alter table public.subjects add column if not exists archived_at timestamptz;
+alter table public.ddays add column if not exists exam_kind text;
+alter table public.tasks add column if not exists roadmap_item_id uuid references public.roadmap_items (id) on delete set null;
+alter table public.reflections add column if not exists comment text not null default '';
+
+-- (2) 옛 데이터 옮기기 (한 번만)
+do $$
+declare
+  h integer;
+  r record;
+  tid uuid;
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'auto_range_tasks'
+  ) then
+    return;
+  end if;
+
+  -- 과목: 과학·사회 → 통합과학·통합사회, 모의고사 6과목은 mock, 탐구1·2는 보관, 나머지는 내신
+  update public.subjects s set name = '통합과학'
+  where s.name = '과학' and s.deleted_at is null
+    and not exists (select 1 from public.subjects o where o.user_id = s.user_id and o.name = '통합과학' and o.deleted_at is null);
+  update public.subjects s set name = '통합사회'
+  where s.name = '사회' and s.deleted_at is null
+    and not exists (select 1 from public.subjects o where o.user_id = s.user_id and o.name = '통합사회' and o.deleted_at is null);
+  update public.subjects set kind = 'mock'
+  where name in ('국어', '수학', '영어', '한국사', '통합과학', '통합사회');
+  update public.subjects set kind = 'mock', archived_at = now()
+  where name in ('탐구1', '탐구2') and archived_at is null;
+
+  -- 하루 회고 세 칸 → 하루 코멘트 한 칸
+  update public.reflections
+  set comment = left(concat_ws(E'\n', nullif(good, ''), nullif(bad, ''), nullif(tomorrow, '')), 500)
+  where comment = '';
+
+  -- 시험: 범위 분배 항목 → 시험 과목의 범위 메모, 과목별 시험 날짜 → 시험 과목
+  update public.ddays set exam_kind = 'other' where type = 'exam' and exam_kind is null;
+  if to_regclass('public.range_items') is not null then
+    insert into public.exam_subjects (user_id, dday_id, subject_id, range_note)
+    select user_id, dday_id, subject_id,
+           left(string_agg(name || ' ' || start_no || '~' || end_no, ', ' order by sort_order), 500)
+    from public.range_items
+    where deleted_at is null
+    group by user_id, dday_id, subject_id
+    on conflict do nothing;
+  end if;
+  if to_regclass('public.exam_subject_dates') is not null then
+    update public.exam_subjects e set exam_date = d.date
+    from public.exam_subject_dates d
+    where d.deleted_at is null and d.dday_id = e.dday_id and d.subject_id = e.subject_id;
+    insert into public.exam_subjects (user_id, dday_id, subject_id, exam_date)
+    select user_id, dday_id, subject_id, date from public.exam_subject_dates where deleted_at is null
+    on conflict do nothing;
+  end if;
+
+  -- 할 일: 범위·목표에서 온 할 일은 일반 할 일로
+  update public.tasks set source = 'manual' where source not in ('manual', 'recurrence', 'roadmap');
+
+  -- 시간표: 평일 기숙사 1·2차시, 주말 19시부터 2시까지 한 시간 단위 자습
+  for r in select user_id, day_start_hour from public.profiles loop
+    h := r.day_start_hour;
+    select id into tid from public.timetables
+    where user_id = r.user_id and default_for = 'weekday' and deleted_at is null;
+    if tid is not null then
+      insert into public.timetable_slots (user_id, timetable_id, name, category, start_min, end_min)
+      select r.user_id, tid, s.name, 'study',
+             ((s.start_clock - h * 60) + 1440) % 1440,
+             ((s.start_clock - h * 60) + 1440) % 1440 + 60
+      from (values ('기숙사 1차시', 0), ('기숙사 2차시', 60)) as s (name, start_clock)
+      where not exists (
+        select 1 from public.timetable_slots x where x.timetable_id = tid and x.name = s.name and x.deleted_at is null
+      );
+    end if;
+    tid := null;
+    select id into tid from public.timetables
+    where user_id = r.user_id and default_for = 'weekend' and deleted_at is null;
+    if tid is not null then
+      insert into public.timetable_slots (user_id, timetable_id, name, category, start_min, end_min)
+      select r.user_id, tid, s.name, 'study',
+             ((s.start_clock - h * 60) + 1440) % 1440,
+             ((s.start_clock - h * 60) + 1440) % 1440 + 60
+      from (values
+        ('자습 6차시', 1140), ('자습 7차시', 1200), ('자습 8차시', 1260), ('자습 9차시', 1320),
+        ('자습 10차시', 1380), ('자습 11차시', 0), ('자습 12차시', 60)
+      ) as s (name, start_clock)
+      where not exists (
+        select 1 from public.timetable_slots x where x.timetable_id = tid and x.name = s.name and x.deleted_at is null
+      );
+    end if;
+    tid := null;
+  end loop;
+end;
+$$;
+
+-- (3) 옛 열·표 지우기, 제약 다시 걸기
+alter table public.profiles drop column if exists auto_range_tasks;
+alter table public.profiles drop constraint if exists profiles_entry_year_check;
+alter table public.profiles add constraint profiles_entry_year_check
+  check (entry_year is null or entry_year between 2000 and 2100);
+alter table public.profiles drop constraint if exists profiles_reviewed_term_check;
+alter table public.profiles add constraint profiles_reviewed_term_check
+  check (reviewed_term is null or reviewed_term ~ '^[1-3]-[12]$');
+
+alter table public.subjects drop column if exists show_in_school_notes;
+alter table public.subjects drop column if exists show_in_mock_notes;
+alter table public.subjects drop column if exists mock_max_score;
+alter table public.subjects drop column if exists has_percentile;
+alter table public.subjects drop column if exists hidden_at;
+alter table public.subjects drop constraint if exists subjects_kind_check;
+alter table public.subjects add constraint subjects_kind_check check (kind in ('mock', 'school'));
+alter table public.subjects drop constraint if exists subjects_term_check;
+alter table public.subjects add constraint subjects_term_check check (term is null or term ~ '^[1-3]-[12]$');
+-- 같은 종류 안에서, 보관하지 않은 과목끼리만 이름이 겹치면 안 된다
+drop index if exists public.subjects_name_key;
+create unique index if not exists subjects_active_name_key
+  on public.subjects (user_id, kind, name) where deleted_at is null and archived_at is null;
+
+alter table public.ddays drop column if exists review_days;
+alter table public.ddays drop column if exists off_weekdays;
+alter table public.ddays drop constraint if exists ddays_exam_kind_check;
+alter table public.ddays add constraint ddays_exam_kind_check
+  check (exam_kind is null or exam_kind in ('school', 'mock', 'other'));
+
+alter table public.tasks drop column if exists range_item_id;
+alter table public.tasks drop column if exists range_start_no;
+alter table public.tasks drop column if exists range_end_no;
+alter table public.tasks drop column if exists goal_id;
+alter table public.tasks drop constraint if exists tasks_source_check;
+alter table public.tasks add constraint tasks_source_check check (source in ('manual', 'recurrence', 'roadmap'));
+alter table public.tasks drop constraint if exists tasks_title_check;
+alter table public.tasks add constraint tasks_title_check
+  check (title = btrim(title) and char_length(title) between 1 and 80);
+-- 로드맵 칸 하나는 할 일 하나로만 넣는다
+create unique index if not exists tasks_roadmap_item_key
+  on public.tasks (roadmap_item_id) where roadmap_item_id is not null and deleted_at is null;
+
+alter table public.reflections drop column if exists good;
+alter table public.reflections drop column if exists bad;
+alter table public.reflections drop column if exists tomorrow;
+alter table public.reflections drop column if exists condition;
+alter table public.reflections drop constraint if exists reflections_comment_check;
+alter table public.reflections add constraint reflections_comment_check check (char_length(comment) <= 500);
+
+drop table if exists
+  public.review_checks, public.range_items, public.exam_subject_dates, public.goals,
+  public.school_grades, public.mock_scores, public.targets, public.records
+  cascade;
 
 
 -- ============================================================================
@@ -649,10 +672,9 @@ declare
 begin
   foreach t in array array[
     'profiles', 'subjects', 'units', 'timetables', 'timetable_slots', 'holidays', 'date_timetables',
-    'recurrences', 'goals', 'ddays', 'exam_subject_dates', 'range_items', 'review_checks', 'tasks',
+    'recurrences', 'ddays', 'exam_subjects', 'roadmap_items', 'tasks',
     'task_deferrals', 'timer_sessions', 'daily_stats', 'reflections', 'mock_rounds', 'wrong_notes',
-    'wrong_note_photos', 'flash_decks', 'flash_cards', 'school_grades', 'mock_scores', 'targets',
-    'records', 'pending_file_deletions'
+    'wrong_note_photos', 'flash_decks', 'flash_cards', 'pending_file_deletions'
   ] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists %I on public.%I', t || '_own', t);
@@ -736,9 +758,8 @@ create trigger wrong_note_photos_enqueue_file
 -- ============================================================================
 
 -- 5.1 bootstrap_user(): 처음 로그인하면 기본값을 만든다. 몇 번 불러도 결과가 같다 ----
---   기본 과목 (3.3, 8.3):
---     국어·수학: 내신·모의 오답, 모의 만점 100, 백분위 있음 / 영어: 만점 100, 백분위 없음
---     과학·사회: 내신만 / 한국사: 만점 50, 백분위 없음 / 탐구1·탐구2: 모의만, 만점 50, 백분위 있음
+--   모의고사 과목 6개(국어·수학·영어·한국사·통합과학·통합사회)는 고정이라, 빠진 것이 있으면 부를 때마다 채운다.
+--   내신 과목은 사용자가 학기마다 정리한다 (새 학기 정리 창).
 --   기본 시간표 (5.12), 2026~2028 공휴일 (5.10)
 create or replace function public.bootstrap_user()
 returns void
@@ -758,20 +779,16 @@ begin
 
   insert into public.profiles (user_id) values (uid) on conflict (user_id) do nothing;
 
-  if found then
-    insert into public.subjects
-      (user_id, name, color_key, sort_order, show_in_school_notes, show_in_mock_notes, mock_max_score, has_percentile)
-    values
-      (uid, '국어',   'rose',       0, true,  true,  100,  true),
-      (uid, '수학',   'periwinkle', 1, true,  true,  100,  true),
-      (uid, '영어',   'mint',       2, true,  true,  100,  false),
-      (uid, '과학',   'butter',     3, true,  false, null, false),
-      (uid, '사회',   'lavender',   4, true,  false, null, false),
-      (uid, '한국사', 'peach',      5, true,  true,  50,   false),
-      (uid, '탐구1',  'sky',        6, false, true,  50,   true),
-      (uid, '탐구2',  'sage',       7, false, true,  50,   true)
-    on conflict do nothing;
-  end if;
+  insert into public.subjects (user_id, name, color_key, sort_order, kind)
+  select uid, m.name, m.color_key, m.sort_order, 'mock'
+  from (values
+    ('국어', 'rose', 0), ('수학', 'periwinkle', 1), ('영어', 'mint', 2),
+    ('한국사', 'peach', 3), ('통합과학', 'butter', 4), ('통합사회', 'lavender', 5)
+  ) as m (name, color_key, sort_order)
+  where not exists (
+    select 1 from public.subjects s
+    where s.user_id = uid and s.kind = 'mock' and s.name = m.name and s.deleted_at is null
+  );
 
   select day_start_hour into h from public.profiles where user_id = uid;
 
@@ -793,7 +810,8 @@ begin
       ('6교시', 'class', 870, 920), ('7교시', 'class', 930, 980), ('청소', 'life', 980, 1000),
       ('8교시', 'class', 1000, 1050), ('9교시', 'class', 1060, 1110), ('저녁 식사', 'meal', 1110, 1180),
       ('야자 1차시', 'study', 1180, 1260), ('야자 2차시', 'study', 1260, 1340),
-      ('야자 3차시', 'study', 1340, 1380), ('귀사', 'life', 1380, 1390), ('점호', 'life', 1410, 1420)
+      ('야자 3차시', 'study', 1340, 1380), ('귀사', 'life', 1380, 1390), ('점호', 'life', 1410, 1420),
+      ('기숙사 1차시', 'study', 0, 60), ('기숙사 2차시', 'study', 60, 120)
     ) as s (name, category, start_clock, end_clock);
 
     insert into public.timetable_slots (user_id, timetable_id, name, category, start_min, end_min)
@@ -804,7 +822,9 @@ begin
       ('기상', 'life', 420, 430), ('아침 식사', 'meal', 450, 520), ('자습 1차시', 'study', 520, 630),
       ('자습 2차시', 'study', 630, 730), ('점심 식사', 'meal', 730, 800), ('자습 3차시', 'study', 800, 900),
       ('자습 4차시', 'study', 900, 1000), ('청소', 'life', 1000, 1020), ('자습 5차시', 'study', 1020, 1080),
-      ('저녁 식사', 'meal', 1080, 1140), ('점호', 'life', 1350, 1360)
+      ('저녁 식사', 'meal', 1080, 1140), ('자습 6차시', 'study', 1140, 1200), ('자습 7차시', 'study', 1200, 1260),
+      ('자습 8차시', 'study', 1260, 1320), ('자습 9차시', 'study', 1320, 1380), ('점호', 'life', 1350, 1360),
+      ('자습 10차시', 'study', 1380, 1440), ('자습 11차시', 'study', 0, 60), ('자습 12차시', 'study', 60, 120)
     ) as s (name, category, start_clock, end_clock);
   end if;
 
@@ -848,8 +868,8 @@ declare
   col text;
 begin
   if p_table not in (
-    'subjects', 'units', 'tasks', 'goals', 'ddays', 'timetables', 'range_items', 'flash_decks', 'flash_cards',
-    'wrong_note_photos'
+    'subjects', 'units', 'tasks', 'ddays', 'timetables', 'exam_subjects', 'roadmap_items', 'flash_decks',
+    'flash_cards', 'wrong_note_photos'
   ) then
     raise exception 'reorder not allowed: %', p_table using errcode = '22023';
   end if;
@@ -864,8 +884,8 @@ end;
 $$;
 
 -- 5.3 휴지통: trash_item / restore_batch / purge_batch (9.4) -------------------
---   함께 지우는 것: 과목 → 오답·단원·성적·목표 등급·범위 / 단원 → 오답 / 회차 → 오답·점수
---                   시험 → 범위 / 목표 → 하위 목표 / 카드 묶음 → 카드 / 시간표 → 항목
+--   함께 지우는 것: 과목 → 오답·단원·시험 과목·로드맵 칸 / 단원 → 오답 / 회차 → 오답
+--                   시험 → 시험 과목·로드맵 칸 / 카드 묶음 → 카드 / 시간표 → 항목
 create or replace function public.trash_item(p_table text, p_id uuid)
 returns uuid
 language plpgsql
@@ -877,10 +897,9 @@ declare
   ts timestamptz := now();
 begin
   if p_table not in (
-    'subjects', 'units', 'timetables', 'timetable_slots', 'holidays', 'date_timetables', 'recurrences', 'goals',
-    'ddays', 'exam_subject_dates', 'range_items', 'review_checks', 'tasks', 'timer_sessions', 'reflections',
-    'mock_rounds', 'wrong_notes', 'wrong_note_photos', 'flash_decks', 'flash_cards', 'school_grades',
-    'mock_scores', 'targets', 'records'
+    'subjects', 'units', 'timetables', 'timetable_slots', 'holidays', 'date_timetables', 'recurrences',
+    'ddays', 'exam_subjects', 'roadmap_items', 'tasks', 'timer_sessions', 'reflections',
+    'mock_rounds', 'wrong_notes', 'wrong_note_photos', 'flash_decks', 'flash_cards'
   ) then
     raise exception 'trash not allowed: %', p_table using errcode = '22023';
   end if;
@@ -895,13 +914,9 @@ begin
       where subject_id = p_id and user_id = uid and deleted_at is null;
     update public.units set deleted_at = ts, delete_batch_id = p_id
       where subject_id = p_id and user_id = uid and deleted_at is null;
-    update public.school_grades set deleted_at = ts, delete_batch_id = p_id
+    update public.exam_subjects set deleted_at = ts, delete_batch_id = p_id
       where subject_id = p_id and user_id = uid and deleted_at is null;
-    update public.mock_scores set deleted_at = ts, delete_batch_id = p_id
-      where subject_id = p_id and user_id = uid and deleted_at is null;
-    update public.targets set deleted_at = ts, delete_batch_id = p_id
-      where subject_id = p_id and user_id = uid and deleted_at is null;
-    update public.range_items set deleted_at = ts, delete_batch_id = p_id
+    update public.roadmap_items set deleted_at = ts, delete_batch_id = p_id
       where subject_id = p_id and user_id = uid and deleted_at is null;
   elsif p_table = 'units' then
     update public.wrong_notes set deleted_at = ts, delete_batch_id = p_id
@@ -909,19 +924,11 @@ begin
   elsif p_table = 'mock_rounds' then
     update public.wrong_notes set deleted_at = ts, delete_batch_id = p_id
       where mock_round_id = p_id and user_id = uid and deleted_at is null;
-    update public.mock_scores set deleted_at = ts, delete_batch_id = p_id
-      where mock_round_id = p_id and user_id = uid and deleted_at is null;
   elsif p_table = 'ddays' then
-    update public.range_items set deleted_at = ts, delete_batch_id = p_id
+    update public.exam_subjects set deleted_at = ts, delete_batch_id = p_id
       where dday_id = p_id and user_id = uid and deleted_at is null;
-  elsif p_table = 'goals' then
-    with recursive tree as (
-      select g.id from public.goals g where g.parent_id = p_id and g.user_id = uid
-      union all
-      select g.id from public.goals g join tree on g.parent_id = tree.id
-    )
-    update public.goals set deleted_at = ts, delete_batch_id = p_id
-      where id in (select id from tree) and deleted_at is null;
+    update public.roadmap_items set deleted_at = ts, delete_batch_id = p_id
+      where dday_id = p_id and user_id = uid and deleted_at is null;
   elsif p_table = 'flash_decks' then
     update public.flash_cards set deleted_at = ts, delete_batch_id = p_id
       where deck_id = p_id and user_id = uid and deleted_at is null;
@@ -944,10 +951,9 @@ declare
   t text;
 begin
   foreach t in array array[
-    'subjects', 'units', 'timetables', 'timetable_slots', 'holidays', 'date_timetables', 'recurrences', 'goals',
-    'ddays', 'exam_subject_dates', 'range_items', 'review_checks', 'tasks', 'timer_sessions', 'reflections',
-    'mock_rounds', 'wrong_notes', 'wrong_note_photos', 'flash_decks', 'flash_cards', 'school_grades',
-    'mock_scores', 'targets', 'records'
+    'subjects', 'units', 'timetables', 'timetable_slots', 'holidays', 'date_timetables', 'recurrences',
+    'ddays', 'exam_subjects', 'roadmap_items', 'tasks', 'timer_sessions', 'reflections',
+    'mock_rounds', 'wrong_notes', 'wrong_note_photos', 'flash_decks', 'flash_cards'
   ] loop
     execute format(
       'update public.%I set deleted_at = null, delete_batch_id = null '
@@ -968,10 +974,9 @@ declare
   t text;
 begin
   foreach t in array array[
-    'wrong_note_photos', 'wrong_notes', 'flash_cards', 'flash_decks', 'review_checks', 'tasks', 'range_items',
-    'exam_subject_dates', 'recurrences', 'goals', 'ddays', 'mock_scores', 'school_grades', 'targets', 'records',
-    'timer_sessions', 'reflections', 'units', 'mock_rounds', 'date_timetables', 'timetable_slots', 'timetables',
-    'holidays', 'subjects'
+    'wrong_note_photos', 'wrong_notes', 'flash_cards', 'flash_decks', 'tasks', 'roadmap_items',
+    'exam_subjects', 'recurrences', 'ddays', 'timer_sessions', 'reflections', 'units', 'mock_rounds',
+    'date_timetables', 'timetable_slots', 'timetables', 'holidays', 'subjects'
   ] loop
     execute format(
       'delete from public.%I where delete_batch_id = $1 and deleted_at is not null and user_id = (select auth.uid())',
@@ -1139,23 +1144,22 @@ declare
   uid uuid := auth.uid();
   t text;
   delete_order text[] := array[
-    'wrong_note_photos', 'wrong_notes', 'flash_cards', 'flash_decks', 'review_checks', 'task_deferrals', 'tasks',
-    'range_items', 'exam_subject_dates', 'recurrences', 'goals', 'ddays', 'mock_scores', 'school_grades', 'targets',
-    'records', 'timer_sessions', 'daily_stats', 'reflections', 'units', 'mock_rounds', 'date_timetables',
-    'timetable_slots', 'timetables', 'holidays', 'subjects'
+    'wrong_note_photos', 'wrong_notes', 'flash_cards', 'flash_decks', 'task_deferrals', 'tasks',
+    'roadmap_items', 'exam_subjects', 'recurrences', 'ddays', 'timer_sessions', 'daily_stats', 'reflections',
+    'units', 'mock_rounds', 'date_timetables', 'timetable_slots', 'timetables', 'holidays', 'subjects'
   ];
   insert_order text[] := array[
     'subjects', 'holidays', 'timetables', 'timetable_slots', 'date_timetables', 'mock_rounds', 'units',
-    'reflections', 'daily_stats', 'timer_sessions', 'records', 'targets', 'school_grades', 'mock_scores', 'ddays',
-    'goals', 'recurrences', 'exam_subject_dates', 'range_items', 'tasks', 'task_deferrals', 'review_checks',
-    'flash_decks', 'flash_cards', 'wrong_notes', 'wrong_note_photos'
+    'reflections', 'daily_stats', 'timer_sessions', 'ddays', 'exam_subjects', 'roadmap_items', 'recurrences',
+    'tasks', 'task_deferrals', 'flash_decks', 'flash_cards', 'wrong_notes', 'wrong_note_photos'
   ];
   p jsonb := p_backup -> 'profile';
 begin
   if uid is null then
     raise exception 'not authenticated' using errcode = '28000';
   end if;
-  if p_backup ->> 'app' is distinct from 'telos' or (p_backup ->> 'version')::integer is distinct from 1 then
+  -- 이 버전(2)의 백업만 받는다. 앱이 이전 버전(1) 파일을 2로 바꿔서 보낸다.
+  if p_backup ->> 'app' is distinct from 'telos' or (p_backup ->> 'version')::integer is distinct from 2 then
     raise exception 'not a Telos backup' using errcode = '22023';
   end if;
 
@@ -1183,7 +1187,8 @@ begin
       sem1_end = coalesce(p ->> 'sem1_end', sem1_end),
       sem2_start = coalesce(p ->> 'sem2_start', sem2_start),
       sem2_end = coalesce(p ->> 'sem2_end', sem2_end),
-      auto_range_tasks = coalesce((p ->> 'auto_range_tasks')::boolean, auto_range_tasks),
+      entry_year = coalesce((p ->> 'entry_year')::smallint, entry_year),
+      reviewed_term = coalesce(p ->> 'reviewed_term', reviewed_term),
       sidebar_collapsed = coalesce((p ->> 'sidebar_collapsed')::boolean, sidebar_collapsed)
     where user_id = uid;
   end if;
@@ -1268,24 +1273,22 @@ begin
             and ds.study_date = ((s.started_at at time zone 'Asia/Seoul') - make_interval(hours => r.day_start_hour))::date
         );
 
-      -- 3) 30일 지난 할 일(완료·미완료 모두), 끝난 D-day, 완료한 수행평가
+      -- 3) 30일 지난 할 일(완료·미완료 모두), 끝난 일정, 완료한 수행평가.
+      --    시험(시험 대비 로드맵)은 기록 화면에 남기려고 지우지 않는다.
       delete from public.tasks where user_id = r.user_id and study_date < today - 30;
       delete from public.task_deferrals where user_id = r.user_id and from_date < today - 90;
       delete from public.ddays dd
-      where dd.user_id = r.user_id
+      where dd.user_id = r.user_id and dd.type <> 'exam'
         and (
-          (dd.date < today - 30 and not exists (
-            select 1 from public.exam_subject_dates e where e.dday_id = dd.id and e.date >= today - 30
-          ))
+          dd.date < today - 30
           or (dd.type = 'performance' and dd.status = 'done' and dd.updated_at < now() - interval '30 days')
         );
 
       -- 4) 휴지통에서 7일 지난 행 완전 삭제 (오답 사진은 트리거가 파일 삭제 대기열에 넣는다)
       foreach t in array array[
-        'wrong_note_photos', 'wrong_notes', 'flash_cards', 'flash_decks', 'review_checks', 'tasks', 'range_items',
-        'exam_subject_dates', 'recurrences', 'goals', 'ddays', 'mock_scores', 'school_grades', 'targets', 'records',
-        'timer_sessions', 'reflections', 'units', 'mock_rounds', 'date_timetables', 'timetable_slots', 'timetables',
-        'holidays', 'subjects'
+        'wrong_note_photos', 'wrong_notes', 'flash_cards', 'flash_decks', 'tasks', 'roadmap_items',
+        'exam_subjects', 'recurrences', 'ddays', 'timer_sessions', 'reflections', 'units', 'mock_rounds',
+        'date_timetables', 'timetable_slots', 'timetables', 'holidays', 'subjects'
       ] loop
         execute format(
           'delete from public.%I where user_id = $1 and deleted_at < now() - interval ''7 days''', t
@@ -1354,10 +1357,9 @@ $$;
 select
   (select count(*) from information_schema.tables where table_schema = 'public' and table_name in (
     'profiles', 'subjects', 'units', 'timetables', 'timetable_slots', 'holidays', 'date_timetables',
-    'recurrences', 'goals', 'ddays', 'exam_subject_dates', 'range_items', 'review_checks', 'tasks',
+    'recurrences', 'ddays', 'exam_subjects', 'roadmap_items', 'tasks',
     'task_deferrals', 'timer_sessions', 'daily_stats', 'reflections', 'mock_rounds', 'wrong_notes',
-    'wrong_note_photos', 'flash_decks', 'flash_cards', 'school_grades', 'mock_scores', 'targets', 'records',
-    'pending_file_deletions', 'maintenance_runs'
-  )) as "테이블 수 (29 이면 정상)",
+    'wrong_note_photos', 'flash_decks', 'flash_cards', 'pending_file_deletions', 'maintenance_runs'
+  )) as "테이블 수 (23 이면 정상)",
   (select count(*) from storage.buckets where id = 'wrong-notes') as "사진 버킷 (1 이면 정상)",
   (select count(*) from pg_extension where extname = 'pg_cron') as "pg_cron 확장 (1 이면 켜짐)";

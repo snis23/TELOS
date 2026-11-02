@@ -63,7 +63,7 @@ export function useStaleTasks(today: string) {
         .gte("study_date", addDays(today, -30))
         .is("done_at", null)
         .is("deleted_at", null)
-        .in("source", ["manual", "goal"]);
+        .in("source", ["manual", "roadmap"]);
       if (error) throw error;
       return data;
     },

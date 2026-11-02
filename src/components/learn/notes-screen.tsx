@@ -13,12 +13,15 @@ import { Badge } from "@/components/ui/tag";
 import { cn } from "@/lib/cn";
 import { newId } from "@/lib/data/crud";
 import { useMockRounds, useNotePhotos, useNotes } from "@/lib/data/learn";
-import { useUnits } from "@/lib/data/plan";
-import { subjectsKey, useSubjectMutations, useSubjects } from "@/lib/data/subjects";
+import { useUnits } from "@/lib/data/learn";
+import { useTerm } from "@/lib/data/profile";
+import { subjectsKey, useAllSubjects, useSubjectMutations } from "@/lib/data/subjects";
+import { useToday } from "@/lib/data/today";
 import { formatMonthDay } from "@/lib/date/days";
 import { getStudyDate } from "@/lib/date/study-date";
 import { ICON_SIZE, ICON_STROKE } from "@/lib/design/icons";
 import { KIND_LABELS, REASON_LABELS, REASON_TONES, groupNotes, noteSummary } from "@/lib/learn/notes";
+import { subjectTag, subjectsForNotes } from "@/lib/subjects/subjects";
 import type { NoteKind, NoteReason, SubjectRow, WrongNoteRow } from "@/lib/supabase/database.types";
 import { useLayout } from "@/lib/use-layout";
 import { NoteDetail } from "./note-detail";
@@ -36,7 +39,6 @@ function readState(): { kind: NoteKind; subjectId: string | null } {
   }
 }
 
-const showKey = (kind: NoteKind) => (kind === "school" ? "show_in_school_notes" : "show_in_mock_notes");
 
 /** 7.1 오답노트 화면 */
 export function NotesScreen() {
@@ -47,7 +49,8 @@ export function NotesScreen() {
   const { data: photos } = useNotePhotos();
   const { data: units } = useUnits();
   const { data: rounds } = useMockRounds();
-  const { data: subjectsData } = useSubjects();
+  const { data: subjectsData } = useAllSubjects();
+  const term = useTerm(useToday());
   const subjectMut = useSubjectMutations();
   const [state, setStateRaw] = useState(readState);
   const [reason, setReason] = useState<"all" | NoteReason>("all");
@@ -77,7 +80,13 @@ export function NotesScreen() {
   const notes = useMemo(() => notesData ?? [], [notesData]);
   const subjects = subjectsData ?? [];
   const kind = state.kind;
-  const visibleSubjects = subjects.filter((s) => s[showKey(kind)] && !s.hidden_at);
+  // 내신 오답: 지금 내신 과목 + 오답이 남아 있는 보관 과목 / 모의고사 오답: 모의고사 과목(고정)
+  const withNotes = new Set(notes.filter((n) => n.kind === kind).map((n) => n.subject_id));
+  const current = subjectsForNotes(kind, subjects);
+  const visibleSubjects = [
+    ...current,
+    ...subjects.filter((s) => !current.includes(s) && withNotes.has(s.id) && (s.archived_at || s.kind !== kind)),
+  ];
   const subject = visibleSubjects.find((s) => s.id === state.subjectId) ?? visibleSubjects[0] ?? null;
   const unsolvedOf = (k: NoteKind, sid?: string) => notes.filter((n) => n.kind === k && !n.solved_at && (!sid || n.subject_id === sid)).length;
 
@@ -106,11 +115,9 @@ export function NotesScreen() {
     else router.push(`/learn/note/?id=${n.id}`);
   };
 
-  const hideOrDelete = (s: SubjectRow) => {
-    const has = notes.some((n) => n.subject_id === s.id && n.kind === kind);
+  const archiveOrDelete = (s: SubjectRow) => {
     setChipMenu(null);
-    if (!has) subjectMut.update.mutate({ ids: [s.id], patch: { [showKey(kind)]: false } });
-    else setRemoveChoice(s);
+    setRemoveChoice(s);
   };
 
   const list = (
@@ -213,7 +220,12 @@ export function NotesScreen() {
           items={visibleSubjects}
           axis="horizontal"
           wholeItem
-          onReorder={(ids) => subjectMut.reorder.mutate({ ids: [...ids, ...subjects.filter((s) => !ids.includes(s.id)).map((s) => s.id)], key: subjectsKey })}
+          onReorder={(ids) =>
+            subjectMut.reorder.mutate({
+              ids: [...subjects.filter((s) => s.kind === "mock").map((s) => s.id), ...ids.filter((id) => !subjects.some((s) => s.id === id && s.kind === "mock")), ...subjects.filter((s) => s.kind !== "mock" && !ids.includes(s.id)).map((s) => s.id)],
+              key: subjectsKey,
+            })
+          }
           onHold={(id) => setChipMenu(subjects.find((s) => s.id === id) ?? null)}
         >
           {(s) => {
@@ -231,6 +243,7 @@ export function NotesScreen() {
                   )}
                 >
                   {s.name}
+                  {subjectTag(s) ? <span className="text-10 text-sub">{subjectTag(s)}</span> : null}
                   <span className="num text-11">{unsolvedOf(kind, s.id)}</span>
                 </button>
                 {on ? (
@@ -247,14 +260,16 @@ export function NotesScreen() {
             );
           }}
         </SortableList>
-        <button
-          type="button"
-          onClick={() => setAddSubject(true)}
-          className="inline-flex h-chip-phone shrink-0 items-center gap-1 rounded-full border border-dashed border-line-2 px-3.5 text-13 whitespace-nowrap text-sub pad:h-chip"
-        >
-          <Plus size={ICON_SIZE.inline} strokeWidth={ICON_STROKE} aria-hidden />
-          과목
-        </button>
+        {kind === "school" ? (
+          <button
+            type="button"
+            onClick={() => setAddSubject(true)}
+            className="inline-flex h-chip-phone shrink-0 items-center gap-1 rounded-full border border-dashed border-line-2 px-3.5 text-13 whitespace-nowrap text-sub pad:h-chip"
+          >
+            <Plus size={ICON_SIZE.inline} strokeWidth={ICON_STROKE} aria-hidden />
+            내신 과목
+          </button>
+        ) : null}
       </div>
 
       {subject ? (
@@ -308,32 +323,29 @@ export function NotesScreen() {
         </>
       ) : (
         <div className="card">
-          <EmptyState message={`${KIND_LABELS[kind]} 오답노트에 보이는 과목이 없어요`} action={<Button variant="secondary" onClick={() => setAddSubject(true)}>과목 추가</Button>} />
+          <EmptyState
+            message={kind === "school" ? "이번 학기 내신 과목이 없어요" : "모의고사 과목이 없어요"}
+            action={kind === "school" ? <Button variant="secondary" onClick={() => setAddSubject(true)}>내신 과목 추가</Button> : undefined}
+          />
         </div>
       )}
 
       {adding && subject ? <NoteForm kind={kind} subjectId={subject.id} initialFiles={adding} onClose={() => setAdding(null)} /> : null}
 
-      {addSubject ? (
-        <AddSubjectDialog
-          kind={kind}
-          hidden={subjects.filter((s) => !s[showKey(kind)] || s.hidden_at)}
-          subjects={subjects}
-          onClose={() => setAddSubject(false)}
-          onShow={(s) => {
-            subjectMut.update.mutate({ ids: [s.id], patch: { [showKey(kind)]: true, hidden_at: null } });
-            setState({ subjectId: s.id });
-          }}
-          onCreate={(v) => {
-            const id = newId();
-            subjectMut.insert.mutate({
-              rows: [{ id, ...v, sort_order: subjects.length, show_in_school_notes: kind === "school", show_in_mock_notes: kind === "mock" }],
-              appendTo: subjectsKey,
-            });
-            setState({ subjectId: id });
-          }}
-        />
-      ) : null}
+      <SubjectDialog
+        open={addSubject}
+        title="내신 과목 추가"
+        subjects={current}
+        onClose={() => setAddSubject(false)}
+        onSubmit={(v) => {
+          const id = newId();
+          subjectMut.insert.mutate({
+            rows: [{ id, ...v, kind: "school", term: term.key, sort_order: subjects.length }],
+            appendTo: subjectsKey,
+          });
+          setState({ subjectId: id });
+        }}
+      />
 
       {chipMenu ? (
         <Dialog open onClose={() => setChipMenu(null)} title={`${chipMenu.name} 과목`}>
@@ -347,16 +359,21 @@ export function NotesScreen() {
             >
               이름·색 수정
             </Button>
-            <Button variant="danger" onClick={() => hideOrDelete(chipMenu)}>
-              이 종류에서 숨기기 또는 삭제
-            </Button>
+            {chipMenu.kind === "school" ? (
+              <Button variant="danger" onClick={() => archiveOrDelete(chipMenu)}>
+                {chipMenu.archived_at ? "삭제" : "보관 또는 삭제"}
+              </Button>
+            ) : (
+              <p className="text-12 text-sub">모의고사 과목은 고정이라 색만 바꿀 수 있어요.</p>
+            )}
           </div>
         </Dialog>
       ) : null}
       <SubjectDialog
         open={editSubject !== null}
         subject={editSubject}
-        subjects={subjects}
+        subjects={editSubject && !editSubject.archived_at ? subjectsForNotes(editSubject.kind, subjects) : []}
+        lockName={editSubject?.kind === "mock"}
         onClose={() => setEditSubject(null)}
         onSubmit={(v) => editSubject && subjectMut.update.mutate({ ids: [editSubject.id], patch: v })}
       />
@@ -364,18 +381,20 @@ export function NotesScreen() {
         <Dialog
           open
           onClose={() => setRemoveChoice(null)}
-          title={`${removeChoice.name} 과목에 오답이 있어요`}
+          title={`${removeChoice.name} 과목`}
           footer={
             <>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  subjectMut.update.mutate({ ids: [removeChoice.id], patch: { [showKey(kind)]: false } });
-                  setRemoveChoice(null);
-                }}
-              >
-                숨기기(오답 유지)
-              </Button>
+              {!removeChoice.archived_at ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    subjectMut.update.mutate({ ids: [removeChoice.id], patch: { archived_at: new Date().toISOString() } });
+                    setRemoveChoice(null);
+                  }}
+                >
+                  보관 (기록 유지)
+                </Button>
+              ) : null}
               <Button
                 variant="danger"
                 onClick={() => {
@@ -388,13 +407,15 @@ export function NotesScreen() {
             </>
           }
         >
-          <p className="text-13 text-ink-2">숨기면 오답은 그대로 남아요. 삭제하면 과목과 오답이 함께 휴지통으로 가요.</p>
+          <p className="text-13 text-ink-2">
+            보관하면 고르는 목록에서만 빠지고 오답·공부 기록은 그대로 남아요. 삭제하면 과목과 오답이 함께 휴지통으로 가요.
+          </p>
         </Dialog>
       ) : null}
       <ConfirmDialog
         open={confirmDelete !== null}
         title={`${confirmDelete?.name ?? ""} 과목을 정말 삭제할까요?`}
-        message="과목과 이 과목의 오답, 단원, 성적이 모두 휴지통으로 가요. 7일 안에는 되돌릴 수 있어요."
+        message="과목과 이 과목의 오답, 단원, 시험 로드맵 계획이 모두 휴지통으로 가요. 7일 안에는 되돌릴 수 있어요."
         confirmLabel="삭제"
         danger
         onConfirm={() => {
@@ -404,56 +425,5 @@ export function NotesScreen() {
         onClose={() => setConfirmDelete(null)}
       />
     </div>
-  );
-}
-
-function AddSubjectDialog({
-  kind,
-  hidden,
-  subjects,
-  onClose,
-  onShow,
-  onCreate,
-}: {
-  kind: NoteKind;
-  hidden: SubjectRow[];
-  subjects: SubjectRow[];
-  onClose: () => void;
-  onShow: (s: SubjectRow) => void;
-  onCreate: (v: { name: string; color_key: SubjectRow["color_key"] }) => void;
-}) {
-  const [creating, setCreating] = useState(false);
-  if (creating) {
-    return <SubjectDialog open subjects={subjects} onClose={onClose} onSubmit={onCreate} />;
-  }
-  return (
-    <Dialog open onClose={onClose} title={`${KIND_LABELS[kind]} 오답노트에 과목 추가`}>
-      <div className="flex flex-col gap-3 pb-2">
-        {hidden.length ? (
-          <>
-            <p className="text-12 text-sub">있는 과목 보이기</p>
-            <div className="flex flex-wrap gap-2">
-              {hidden.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  data-subject={s.color_key}
-                  onClick={() => {
-                    onShow(s);
-                    onClose();
-                  }}
-                  className="control-h rounded-full bg-s-tag px-3.5 text-13 text-s-tag-ink"
-                >
-                  {s.name}
-                </button>
-              ))}
-            </div>
-          </>
-        ) : null}
-        <Button variant="secondary" onClick={() => setCreating(true)}>
-          <Plus size={ICON_SIZE.inline} strokeWidth={ICON_STROKE} aria-hidden />새 과목 만들기
-        </Button>
-      </div>
-    </Dialog>
   );
 }

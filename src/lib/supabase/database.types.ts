@@ -24,21 +24,26 @@ export type ProfileRow = Base & {
   sem1_end: string;
   sem2_start: string;
   sem2_end: string;
-  auto_range_tasks: boolean;
+  /** 입학 연도 (학년 계산용) */
+  entry_year: number | null;
+  /** 마지막으로 내신 과목을 정리한 학기 ("2-1" = 2학년 1학기) */
+  reviewed_term: string | null;
   sidebar_collapsed: boolean;
   last_backup_at: string | null;
 };
 
+/** mock: 모의고사 과목(고정 6개) / school: 내신 과목(학기마다 바뀜) */
+export type SubjectKind = "mock" | "school";
 export type SubjectRow = Base &
   Trashable & {
     name: string;
     color_key: SubjectColorKey;
     sort_order: number;
-    show_in_school_notes: boolean;
-    show_in_mock_notes: boolean;
-    mock_max_score: number | null;
-    has_percentile: boolean;
-    hidden_at: string | null;
+    kind: SubjectKind;
+    /** 내신 과목을 처음 배운 학기 ("1-2"), 모의고사 과목은 null */
+    term: string | null;
+    /** 학기가 끝나 보관한 시각. 보관한 과목은 고르는 목록에서만 빠지고 기록은 남는다 */
+    archived_at: string | null;
   };
 
 export type UnitStatus = "todo" | "doing" | "done";
@@ -88,20 +93,6 @@ export type RecurrenceRow = Base &
     default_start_min: number | null;
   };
 
-export type GoalLevel = "long" | "month" | "week";
-export type GoalRow = Base &
-  Trashable & {
-    title: string;
-    subject_id: string | null;
-    level: GoalLevel;
-    start_date: string;
-    end_date: string;
-    parent_id: string | null;
-    sort_order: number;
-    done_at: string | null;
-    memo: string | null;
-  };
-
 export type DdayType = "exam" | "performance" | "etc";
 export type PerfStatus = "todo" | "doing" | "done";
 export type PerfKind = "report" | "presentation" | "experiment" | "writing" | "debate" | "etc";
@@ -117,37 +108,36 @@ export type DdayRow = Base &
     prep_percent: number | null;
     perf_kind: PerfKind | null;
     memo: string | null;
-    review_days: number;
-    off_weekdays: number[];
+    /** 시험의 종류: 내신(이번 학기 내신 과목) / 모의고사(모의고사 과목) / 기타(모든 과목) */
+    exam_kind: ExamKind | null;
   };
 
-export type ExamSubjectDateRow = Base & Trashable & { dday_id: string; subject_id: string; date: string };
+export type ExamKind = "school" | "mock" | "other";
 
-export type RangeUnit = "page" | "unit" | "chapter" | "problem";
-export type RangeItemRow = Base &
+/** 시험에 들어가는 과목: 과목별 시험 날짜(없으면 시험 첫날)와 범위 메모 */
+export type ExamSubjectRow = Base &
   Trashable & {
     dday_id: string;
     subject_id: string;
-    name: string;
-    unit_label: RangeUnit;
-    start_no: number;
-    end_no: number;
-    done_amount: number;
+    exam_date: string | null;
+    range_note: string | null;
     sort_order: number;
-    default_slot_name: string | null;
-    default_start_min: number | null;
   };
 
-export type ReviewCheckRow = Base &
+/** 시험 대비 로드맵 달력의 한 칸 */
+export type RoadmapItemRow = Base &
   Trashable & {
     dday_id: string;
-    unit_id: string;
-    round1: boolean;
-    round2: boolean;
-    round3: boolean;
+    subject_id: string;
+    study_date: string;
+    content: string;
+    /** 회독 (1~5), 없으면 null */
+    round: number | null;
+    done_at: string | null;
+    sort_order: number;
   };
 
-export type TaskSource = "manual" | "recurrence" | "range" | "goal";
+export type TaskSource = "manual" | "recurrence" | "roadmap";
 export type TaskRow = Base &
   Trashable & {
     subject_id: string | null;
@@ -164,10 +154,7 @@ export type TaskRow = Base &
     slot_id: string | null;
     source: TaskSource;
     recurrence_id: string | null;
-    range_item_id: string | null;
-    range_start_no: number | null;
-    range_end_no: number | null;
-    goal_id: string | null;
+    roadmap_item_id: string | null;
   };
 
 export type TaskDeferralRow = Base & {
@@ -199,13 +186,11 @@ export type DailyStatRow = Base & {
   deferred_events: number;
 };
 
+/** 하루 코멘트 (하루에 하나) */
 export type ReflectionRow = Base &
   Trashable & {
     study_date: string;
-    good: string;
-    bad: string;
-    tomorrow: string;
-    condition: number | null;
+    comment: string;
   };
 
 export type MockRoundRow = Base & Trashable & { year: number; month: number; name: string };
@@ -239,45 +224,6 @@ export type FlashDeckRow = Base & Trashable & { title: string; subject_id: strin
 export type FlashCardRow = Base &
   Trashable & { deck_id: string; front: string; back: string; known: boolean; sort_order: number };
 
-export type Achievement = "A" | "B" | "C" | "D" | "E";
-export type SchoolGradeRow = Base &
-  Trashable & {
-    year: number;
-    semester: number;
-    subject_id: string;
-    credits: number;
-    raw_score: number;
-    subject_avg: number | null;
-    achievement: Achievement | null;
-    rank: number | null;
-    tie_count: number;
-    total_students: number | null;
-    grade: number | null;
-    grade_manual: boolean;
-  };
-
-export type MockScoreRow = Base &
-  Trashable & {
-    mock_round_id: string;
-    subject_id: string;
-    raw_score: number | null;
-    percentile: number | null;
-    grade: number | null;
-  };
-
-export type TargetRow = Base &
-  Trashable & { subject_id: string; school_target: number | null; mock_target: number | null };
-
-export type RecordKind = "seteuk" | "reading" | "club" | "etc";
-export type RecordRow = Base &
-  Trashable & {
-    kind: RecordKind;
-    subject_id: string | null;
-    title: string;
-    date: string;
-    content: string;
-  };
-
 export type PendingFileDeletionRow = Base & { storage_path: string };
 
 export type MaintenanceRunRow = { id: number; ran_at: string; ok: boolean; detail: string | null };
@@ -292,11 +238,9 @@ export type TableRows = {
   holidays: HolidayRow;
   date_timetables: DateTimetableRow;
   recurrences: RecurrenceRow;
-  goals: GoalRow;
   ddays: DdayRow;
-  exam_subject_dates: ExamSubjectDateRow;
-  range_items: RangeItemRow;
-  review_checks: ReviewCheckRow;
+  exam_subjects: ExamSubjectRow;
+  roadmap_items: RoadmapItemRow;
   tasks: TaskRow;
   task_deferrals: TaskDeferralRow;
   timer_sessions: TimerSessionRow;
@@ -307,10 +251,6 @@ export type TableRows = {
   wrong_note_photos: WrongNotePhotoRow;
   flash_decks: FlashDeckRow;
   flash_cards: FlashCardRow;
-  school_grades: SchoolGradeRow;
-  mock_scores: MockScoreRow;
-  targets: TargetRow;
-  records: RecordRow;
   pending_file_deletions: PendingFileDeletionRow;
   maintenance_runs: MaintenanceRunRow;
 };
@@ -326,11 +266,9 @@ export const TRASHABLE_TABLES = [
   "holidays",
   "date_timetables",
   "recurrences",
-  "goals",
   "ddays",
-  "exam_subject_dates",
-  "range_items",
-  "review_checks",
+  "exam_subjects",
+  "roadmap_items",
   "tasks",
   "timer_sessions",
   "reflections",
@@ -339,10 +277,6 @@ export const TRASHABLE_TABLES = [
   "wrong_note_photos",
   "flash_decks",
   "flash_cards",
-  "school_grades",
-  "mock_scores",
-  "targets",
-  "records",
 ] as const satisfies readonly TableName[];
 export type TrashableTable = (typeof TRASHABLE_TABLES)[number];
 

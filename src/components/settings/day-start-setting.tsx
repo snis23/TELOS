@@ -34,10 +34,9 @@ export function DayStartSetting() {
     try {
       const supabase = requireSupabase();
       const shift = (m: number | null) => (m === null ? null : shiftDayMin(m, from, to));
-      const [slots, recs, ranges, tasks] = await Promise.all([
+      const [slots, recs, tasks] = await Promise.all([
         supabase.from("timetable_slots").select("id, start_min, end_min"),
         supabase.from("recurrences").select("id, default_start_min").not("default_start_min", "is", null),
-        supabase.from("range_items").select("id, default_start_min").not("default_start_min", "is", null),
         supabase.from("tasks").select("id, start_min, end_min").gte("study_date", today).not("start_min", "is", null),
       ]);
       for (const s of slots.data ?? []) {
@@ -47,9 +46,6 @@ export function DayStartSetting() {
       }
       for (const r of recs.data ?? []) {
         await looseTable("recurrences").update({ default_start_min: shift(r.default_start_min) }).in("id", [r.id]);
-      }
-      for (const r of ranges.data ?? []) {
-        await looseTable("range_items").update({ default_start_min: shift(r.default_start_min) }).in("id", [r.id]);
       }
       for (const t of tasks.data ?? []) {
         const start = shift(t.start_min) as number;

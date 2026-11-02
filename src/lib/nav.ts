@@ -3,7 +3,6 @@ import {
   ChartColumn,
   ClipboardList,
   Ellipsis,
-  GraduationCap,
   Map as MapIcon,
   Settings,
   Sun,
@@ -16,23 +15,22 @@ export type NavItem = {
   icon: LucideIcon;
 };
 
-/** 4.1 메뉴 구조. 사이드바와 Alt+1~6 이 이 순서를 쓴다. */
+/** 4.1 메뉴 구조. 사이드바와 Alt+1~5 가 이 순서를 쓴다. */
 export const MAIN_NAV: readonly NavItem[] = [
   { href: "/", label: "오늘", icon: Sun },
+  { href: "/exam/", label: "시험 대비", icon: ClipboardList },
   { href: "/plan/", label: "계획", icon: MapIcon },
-  { href: "/exam/", label: "시험", icon: ClipboardList },
   { href: "/learn/", label: "학습", icon: BookOpen },
   { href: "/record/", label: "기록", icon: ChartColumn },
-  { href: "/grade/", label: "성적", icon: GraduationCap },
 ];
 
 export const SETTINGS_NAV: NavItem = { href: "/settings/", label: "설정", icon: Settings };
 
-/** 하단 탭: 오늘, 계획, 시험, 학습 + 더보기 */
+/** 하단 탭: 오늘, 시험 대비, 계획, 학습 + 더보기 */
 export const TAB_NAV: readonly NavItem[] = MAIN_NAV.slice(0, 4);
 
-/** 더보기 시트: 기록, 성적, 설정 */
-export const MORE_NAV: readonly NavItem[] = [MAIN_NAV[4], MAIN_NAV[5], SETTINGS_NAV];
+/** 더보기 시트: 기록, 설정 */
+export const MORE_NAV: readonly NavItem[] = [MAIN_NAV[4], SETTINGS_NAV];
 
 export const MORE_ICON = Ellipsis;
 

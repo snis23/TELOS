@@ -18,6 +18,10 @@ type Props = {
   subjects: readonly SubjectRow[];
   onSubmit: (values: { name: string; color_key: SubjectColorKey }) => void;
   onDelete?: () => void;
+  /** 모의고사 과목처럼 이름을 바꾸지 않는 과목 */
+  lockName?: boolean;
+  /** 창 제목 (기본: 과목 추가 / 과목 수정) */
+  title?: string;
 };
 
 export function SubjectDialog(props: Props) {
@@ -25,7 +29,7 @@ export function SubjectDialog(props: Props) {
   return <SubjectDialogBody key={props.subject?.id ?? "new"} {...props} />;
 }
 
-function SubjectDialogBody({ open, onClose, subject, subjects, onSubmit, onDelete }: Props) {
+function SubjectDialogBody({ open, onClose, subject, subjects, onSubmit, onDelete, lockName, title }: Props) {
   const [name, setName] = useState(subject?.name ?? "");
   const [color, setColor] = useState<SubjectColorKey>(
     subject?.color_key ?? pickNextColor(subjects.map((s) => s.color_key)),
@@ -46,7 +50,7 @@ function SubjectDialogBody({ open, onClose, subject, subjects, onSubmit, onDelet
     <Dialog
       open={open}
       onClose={onClose}
-      title={subject ? "과목 수정" : "과목 추가"}
+      title={title ?? (subject ? "과목 수정" : "과목 추가")}
       footer={
         <>
           {subject && onDelete ? (
@@ -70,7 +74,9 @@ function SubjectDialogBody({ open, onClose, subject, subjects, onSubmit, onDelet
           maxLength={SUBJECT_NAME_MAX + 5}
           onChange={(e) => setName(e.target.value)}
           error={errors.name}
-          autoFocus
+          disabled={lockName}
+          hint={lockName ? "모의고사 과목은 이름이 고정이에요" : undefined}
+          autoFocus={!lockName}
         />
         <div className="flex flex-col gap-1.5">
           <span className="text-12 text-sub">색</span>

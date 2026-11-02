@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge, SubjectTag } from "@/components/ui/tag";
 import { useMockRounds, useNoteMutations, useNotePhotos, useNotes } from "@/lib/data/learn";
-import { useUnits } from "@/lib/data/plan";
+import { useUnits } from "@/lib/data/learn";
 import { useSubjectMap } from "@/lib/data/subjects";
 import { formatMonthDay } from "@/lib/date/days";
 import { getStudyDate } from "@/lib/date/study-date";
