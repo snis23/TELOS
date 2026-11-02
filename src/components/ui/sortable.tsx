@@ -10,10 +10,11 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { restrictToHorizontalAxis, restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import {
   SortableContext,
   arrayMove,
+  horizontalListSortingStrategy,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
@@ -32,11 +33,17 @@ export function SortableList<T extends { id: string }>({
   onReorder,
   children,
   axis = "vertical",
+  wholeItem = false,
+  onHold,
 }: {
   items: readonly T[];
   onReorder: (ids: string[]) => void;
   children: (item: T, handle: React.ReactNode) => React.ReactNode;
-  axis?: "vertical" | "free";
+  axis?: "vertical" | "horizontal" | "free";
+  /** 손잡이 대신 항목 전체를 끈다 (터치는 길게 누른 뒤) */
+  wholeItem?: boolean;
+  /** 길게 누르고 움직이지 않고 놓았을 때 (터치) */
+  onHold?: (id: string) => void;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -47,7 +54,10 @@ export function SortableList<T extends { id: string }>({
 
   const onDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
+    if (!over || active.id === over.id) {
+      if (Math.hypot(event.delta.x, event.delta.y) < 6) onHold?.(String(active.id));
+      return;
+    }
     const from = ids.indexOf(String(active.id));
     const to = ids.indexOf(String(over.id));
     if (from < 0 || to < 0) return;
@@ -59,14 +69,20 @@ export function SortableList<T extends { id: string }>({
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragEnd={onDragEnd}
-      modifiers={axis === "vertical" ? [restrictToVerticalAxis, restrictToParentElement] : [restrictToParentElement]}
+      modifiers={
+        axis === "vertical"
+          ? [restrictToVerticalAxis, restrictToParentElement]
+          : axis === "horizontal"
+            ? [restrictToHorizontalAxis]
+            : [restrictToParentElement]
+      }
       accessibility={{
         screenReaderInstructions: { draggable: "Space 로 집고 화살표로 옮긴 뒤 Space 로 놓아요" },
       }}
     >
-      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+      <SortableContext items={ids} strategy={axis === "horizontal" ? horizontalListSortingStrategy : verticalListSortingStrategy}>
         {items.map((item) => (
-          <SortableRow key={item.id} id={item.id}>
+          <SortableRow key={item.id} id={item.id} wholeItem={wholeItem} inline={axis === "horizontal"}>
             {(handle) => children(item, handle)}
           </SortableRow>
         ))}
@@ -75,7 +91,17 @@ export function SortableList<T extends { id: string }>({
   );
 }
 
-function SortableRow({ id, children }: { id: string; children: (handle: React.ReactNode) => React.ReactNode }) {
+function SortableRow({
+  id,
+  children,
+  wholeItem,
+  inline,
+}: {
+  id: string;
+  children: (handle: React.ReactNode) => React.ReactNode;
+  wholeItem?: boolean;
+  inline?: boolean;
+}) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
   const handle = (
     <button
@@ -89,11 +115,30 @@ function SortableRow({ id, children }: { id: string; children: (handle: React.Re
       <GripVertical size={ICON_SIZE.inline} strokeWidth={ICON_STROKE} />
     </button>
   );
+  if (wholeItem) {
+    // 안에 버튼이 있으므로 감싸는 요소는 버튼 역할을 하지 않는다
+    const { role: _role, tabIndex: _tab, "aria-pressed": _pressed, "aria-roledescription": _desc, ...rest } = attributes;
+    void _role;
+    void _tab;
+    void _pressed;
+    void _desc;
+    return (
+      <div
+        ref={setNodeRef}
+        style={{ transform: CSS.Transform.toString(transform), transition }}
+        className={cn("relative", inline && "shrink-0", isDragging && "z-10 opacity-80")}
+        {...rest}
+        {...listeners}
+      >
+        {children(null)}
+      </div>
+    );
+  }
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn("relative", isDragging && "z-10 opacity-80")}
+      className={cn("relative", inline && "shrink-0", isDragging && "z-10 opacity-80")}
     >
       {children(handle)}
     </div>

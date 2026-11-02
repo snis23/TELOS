@@ -2,6 +2,7 @@
  * 가짜 Supabase 클라이언트 (개발 데모, E2E 테스트 전용).
  * NEXT_PUBLIC_TELOS_FAKE_BACKEND 가 "demo" 또는 "e2e" 일 때만 쓰이고, 배포 빌드에서는 빠진다.
  */
+import { idbDelete, idbGet, idbSet } from "@/lib/idb";
 import { FakeQuery } from "./query";
 import { runRpc } from "./rpc";
 import { FakeError, FakeStore, pgError } from "./store";
@@ -31,7 +32,7 @@ function makeSession(email: string): Session {
   };
 }
 
-export function createFakeClient(mode: string, seed?: (store: FakeStore) => void) {
+export function createFakeClient(mode: string, seed?: (store: FakeStore, putFile: (path: string, blob: Blob) => void) => void) {
   const sessionKey = `telos:fake-session:${mode}`;
   const store = new FakeStore(`telos:fake-db:${mode}`, FAKE_USER_ID);
   const listeners = new Set<AuthListener>();
@@ -59,7 +60,7 @@ export function createFakeClient(mode: string, seed?: (store: FakeStore) => void
         await new Promise((r) => setTimeout(r, 0));
         try {
           const data = runRpc(store, name, args);
-          if (name === "bootstrap_user" && seed) seed(store);
+          if (name === "bootstrap_user" && seed) seed(store, (path, blob) => putFile(`wrong-notes/${path}`, blob));
           return { data, error: null };
         } catch (error) {
           if (error instanceof FakeError) return { data: null, error: error.pg };
@@ -70,8 +71,22 @@ export function createFakeClient(mode: string, seed?: (store: FakeStore) => void
     },
   });
 
-  const signedUrl = (path: string) => {
-    const blob = files.get(path);
+  // 사진 파일은 기기의 IndexedDB 에 둔다 (새로고침해도 남게)
+  const fileKey = (path: string) => `telos:fake-file:${mode}:${path}`;
+  const putFile = (path: string, blob: Blob) => {
+    files.set(path, blob);
+    void idbSet(fileKey(path), blob);
+  };
+  const loadFile = async (path: string) => {
+    if (!files.has(path)) {
+      const blob = await idbGet<Blob>(fileKey(path));
+      if (blob) files.set(path, blob);
+    }
+    return files.get(path) ?? null;
+  };
+
+  const signedUrl = async (path: string) => {
+    const blob = await loadFile(path);
     if (!blob) return null;
     let url = urls.get(path);
     if (!url) {
@@ -116,28 +131,30 @@ export function createFakeClient(mode: string, seed?: (store: FakeStore) => void
           if (!path.startsWith(`${FAKE_USER_ID}/`)) {
             return { data: null, error: { message: "new row violates row-level security policy", statusCode: "403" } };
           }
-          files.set(`${bucket}/${path}`, file);
+          putFile(`${bucket}/${path}`, file);
           return { data: { path }, error: null };
         },
         async download(path: string) {
-          const blob = files.get(`${bucket}/${path}`);
+          const blob = await loadFile(`${bucket}/${path}`);
           return blob ? { data: blob, error: null } : { data: null, error: { message: "Object not found", statusCode: "404" } };
         },
         async createSignedUrl(path: string) {
-          const url = signedUrl(`${bucket}/${path}`);
+          const url = await signedUrl(`${bucket}/${path}`);
           return url ? { data: { signedUrl: url }, error: null } : { data: null, error: { message: "Object not found" } };
         },
         async createSignedUrls(paths: string[]) {
-          return {
-            data: paths.map((p) => {
-              const url = signedUrl(`${bucket}/${p}`);
-              return { path: p, signedUrl: url ?? "", error: url ? null : "Object not found" };
-            }),
-            error: null,
-          };
+          const data = [];
+          for (const p of paths) {
+            const url = await signedUrl(`${bucket}/${p}`);
+            data.push({ path: p, signedUrl: url ?? "", error: url ? null : "Object not found" });
+          }
+          return { data, error: null };
         },
         async remove(paths: string[]) {
-          for (const p of paths) files.delete(`${bucket}/${p}`);
+          for (const p of paths) {
+            files.delete(`${bucket}/${p}`);
+            void idbDelete(fileKey(`${bucket}/${p}`));
+          }
           return { data: paths.map((name) => ({ name })), error: null };
         },
       }),
@@ -156,7 +173,7 @@ export function createFakeClient(mode: string, seed?: (store: FakeStore) => void
     /** 테스트에서 저장소를 직접 다룰 때 */
     __store: store,
     __putFile(path: string, blob: Blob) {
-      files.set(`wrong-notes/${path}`, blob);
+      putFile(`wrong-notes/${path}`, blob);
     },
   };
   return client;

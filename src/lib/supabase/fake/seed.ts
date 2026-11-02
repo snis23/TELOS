@@ -8,7 +8,7 @@ import type { FakeStore, Row } from "./store";
 
 const SEEDED_KEY = "telos:fake-seeded:demo";
 
-export function seedDemo(store: FakeStore) {
+export function seedDemo(store: FakeStore, putFile: (path: string, blob: Blob) => void) {
   try {
     if (window.localStorage.getItem(SEEDED_KEY)) return;
     window.localStorage.setItem(SEEDED_KEY, "1");
@@ -69,6 +69,34 @@ export function seedDemo(store: FakeStore) {
       { kind: "nap", subject_id: null, started_at: at(d, "13:00"), ended_at: at(d, "13:15") },
     ]);
   }
+  // 오답노트: 사진은 간단한 그림으로 만든다
+  const svg = (label: string) =>
+    new Blob(
+      [`<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#fbfaf7"/><text x="40" y="120" font-size="48" fill="#2a2b30">${label}</text><text x="40" y="220" font-size="32" fill="#6e7079">풀이 과정 사진</text></svg>`],
+      { type: "image/svg+xml" },
+    );
+  const units = new Map(store.visible("units").map((u) => [u.name as string, u.id as string]));
+  const [round] = add("mock_rounds", [{ year: 2026, month: 10, name: "2026년 10월 모의고사" }]);
+  const notes = add("wrong_notes", [
+    { kind: "school", subject_id: sid("수학"), unit_id: units.get("지수"), source: "문제집 p.91 12번", reason: "concept", memo: "지수법칙 다시 보기" },
+    { kind: "school", subject_id: sid("수학"), unit_id: units.get("로그"), source: "교과서 p.140 5번", reason: "slip", solved_at: new Date().toISOString() },
+    { kind: "mock", subject_id: sid("수학"), mock_round_id: round.id, question_no: 21, points: 4, reason: "time" },
+    { kind: "school", subject_id: sid("국어"), unit_id: units.get("현대시"), source: "프린트 3번", reason: "concept" },
+  ]);
+  notes.forEach((n, i) => {
+    const path = `${store.userId}/${n.id}/p${i}.jpg`;
+    putFile(path, svg(`오답 ${i + 1}`));
+    add("wrong_note_photos", [{ note_id: n.id, storage_path: path, sort_order: 0, width: 800, height: 600 }]);
+  });
+
+  // 암기 카드
+  const [deck] = add("flash_decks", [{ title: "수능 영단어 Day 1", subject_id: sid("영어") }]);
+  add("flash_cards", [
+    { deck_id: deck.id, front: "abandon", back: "버리다", sort_order: 0 },
+    { deck_id: deck.id, front: "benefit", back: "이익, 혜택", sort_order: 1, known: true },
+    { deck_id: deck.id, front: "consequence", back: "결과", sort_order: 2 },
+  ]);
+
   add("reflections", [
     { study_date: addDays(today, -1), condition: 4, good: "수학 문제집 목표량을 끝냈다", bad: "영어 단어를 미뤘다", tomorrow: "영단어 먼저 하기" },
   ]);
