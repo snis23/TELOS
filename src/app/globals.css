@@ -74,6 +74,12 @@
   --subject-sage-tag: #edf3e1;
   --subject-sage-tag-ink: #4f6a22;
 
+  /* 8.1 공부 잔디 단계 1~4 (0 단계는 --surface-2) */
+  --grass-1: #e3e7fb;
+  --grass-2: #c3cbf5;
+  --grass-3: #9eaaf0;
+  --grass-4: #7f8ee6;
+
   /* 창 뒤 어둡게 깔리는 막. 명세에 없는 값이라 기존 토큰에서 섞어 만든다. */
   --scrim: color-mix(in srgb, var(--ink) 28%, transparent);
 }
@@ -133,6 +139,11 @@
   --subject-sky-tag-ink: #a8d3f2;
   --subject-sage-tag: #2a3220;
   --subject-sage-tag-ink: #c8d9a6;
+
+  --grass-1: #262a42;
+  --grass-2: #353c6b;
+  --grass-3: #5864b8;
+  --grass-4: #9eaaf0;
 
   --scrim: color-mix(in srgb, var(--bg) 72%, transparent);
 }
@@ -275,6 +286,10 @@
   --color-s-tag-ink: var(--s-tag-ink);
 
   --color-scrim: var(--scrim);
+  --color-grass-1: var(--grass-1);
+  --color-grass-2: var(--grass-2);
+  --color-grass-3: var(--grass-3);
+  --color-grass-4: var(--grass-4);
 
   --font-sans: var(--font-plex-sans), "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { ComingSoon } from "@/components/shell/coming-soon";
+import { GradeView } from "@/components/grade/grade-view";
 
 export const metadata: Metadata = { title: "성적" };
 
 export default function GradePage() {
-  return <ComingSoon title="성적" />;
+  return <GradeView />;
 }

@@ -97,6 +97,29 @@ export function seedDemo(store: FakeStore, putFile: (path: string, blob: Blob) =
     { deck_id: deck.id, front: "consequence", back: "결과", sort_order: 2 },
   ]);
 
+  // 성적
+  const grade = (y: number, sem: number, name: string, credits: number, raw: number, rank: number, total: number, g: number) => ({
+    year: y, semester: sem, subject_id: sid(name), credits, raw_score: raw, rank, total_students: total, tie_count: 1, grade: g,
+  });
+  add("school_grades", [
+    grade(1, 1, "국어", 4, 91, 18, 250, 1), grade(1, 1, "수학", 4, 84, 60, 250, 2), grade(1, 1, "영어", 4, 88, 40, 250, 2), grade(1, 1, "과학", 3, 79, 110, 250, 3),
+    grade(1, 2, "국어", 4, 93, 12, 248, 1), grade(1, 2, "수학", 4, 88, 45, 248, 2), grade(1, 2, "영어", 4, 90, 30, 248, 2), grade(1, 2, "과학", 3, 85, 70, 248, 3),
+    grade(2, 1, "국어", 4, 90, 20, 240, 1), grade(2, 1, "수학", 4, 92, 22, 240, 1), grade(2, 1, "영어", 3, 87, 50, 240, 2),
+  ]);
+  const [r6] = add("mock_rounds", [{ year: 2026, month: 6, name: "2026년 6월 모의고사" }]);
+  const [r9] = add("mock_rounds", [{ year: 2026, month: 9, name: "2026년 9월 모의고사" }]);
+  const ms = (roundId: unknown, name: string, raw: number, pct: number | null, g: number) => ({ mock_round_id: roundId, subject_id: sid(name), raw_score: raw, percentile: pct, grade: g });
+  add("mock_scores", [
+    ms(r6.id, "국어", 84, 91, 2), ms(r6.id, "수학", 76, 85, 3), ms(r6.id, "영어", 88, null, 2), ms(r6.id, "한국사", 42, null, 2),
+    ms(r9.id, "국어", 88, 94, 2), ms(r9.id, "수학", 84, 92, 2), ms(r9.id, "영어", 92, null, 1), ms(r9.id, "한국사", 45, null, 1),
+    ms(round.id, "국어", 91, 96, 1), ms(round.id, "수학", 80, 89, 2), ms(round.id, "영어", 90, null, 1), ms(round.id, "한국사", 47, null, 1),
+  ]);
+  add("targets", [{ subject_id: sid("수학"), school_target: 1, mock_target: 1 }]);
+  add("records", [
+    { kind: "seteuk", subject_id: sid("수학"), title: "지수함수와 인구 모델 탐구", date: addDays(today, -20), content: "로지스틱 모델과 비교해 보고서를 썼다." },
+    { kind: "reading", subject_id: sid("국어"), title: "『사피엔스』 독서", date: addDays(today, -40), content: "인지 혁명 부분 요약" },
+  ]);
+
   add("reflections", [
     { study_date: addDays(today, -1), condition: 4, good: "수학 문제집 목표량을 끝냈다", bad: "영어 단어를 미뤘다", tomorrow: "영단어 먼저 하기" },
   ]);
