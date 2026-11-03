@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Archive, ArchiveRestore, Pencil, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronDown, ChevronUp, Pencil, Plus } from "lucide-react";
 import { TermReviewDialog } from "@/components/subjects/term-review-dialog";
 import { Button, IconButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -44,6 +44,16 @@ export function SubjectManager() {
 
   const archive = (s: SubjectRow) => update.mutate({ ids: [s.id], patch: { archived_at: new Date().toISOString() } });
   const unarchive = (s: SubjectRow) => update.mutate({ ids: [s.id], patch: { archived_at: null } });
+  /** 내신 과목 순서 저장 (모의고사 과목은 그대로 앞에 둔다) */
+  const saveOrder = (ids: string[]) => reorder.mutate({ ids: [...mock.map((m) => m.id), ...ids], key: subjectsKey });
+  const move = (subject: SubjectRow, delta: -1 | 1) => {
+    const ids = school.map((s) => s.id);
+    const i = ids.indexOf(subject.id);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    saveOrder(ids);
+  };
 
   return (
     <Card
@@ -78,23 +88,34 @@ export function SubjectManager() {
           {school.length === 0 ? (
             <EmptyState message="이번 학기 내신 과목을 추가해 주세요" />
           ) : (
-            <SortableList items={school} onReorder={(ids) => reorder.mutate({ ids: [...mock.map((m) => m.id), ...ids], key: subjectsKey })}>
-              {(subject, handle) => (
-                <SubjectLine
-                  subject={subject}
-                  handle={handle}
-                  onEdit={() => setEditing(subject)}
-                  extra={
-                    <IconButton aria-label={`${subject.name} 보관`} onClick={() => archive(subject)}>
-                      <Archive size={ICON_SIZE.inline} strokeWidth={ICON_STROKE} />
-                    </IconButton>
-                  }
-                />
-              )}
+            <SortableList items={school} onReorder={saveOrder}>
+              {(subject, handle) => {
+                const i = school.indexOf(subject);
+                return (
+                  <SubjectLine
+                    subject={subject}
+                    handle={handle}
+                    onEdit={() => setEditing(subject)}
+                    extra={
+                      <>
+                        <IconButton aria-label={`${subject.name} 위로`} disabled={i === 0} onClick={() => move(subject, -1)}>
+                          <ChevronUp size={ICON_SIZE.inline} strokeWidth={ICON_STROKE} />
+                        </IconButton>
+                        <IconButton aria-label={`${subject.name} 아래로`} disabled={i === school.length - 1} onClick={() => move(subject, 1)}>
+                          <ChevronDown size={ICON_SIZE.inline} strokeWidth={ICON_STROKE} />
+                        </IconButton>
+                        <IconButton aria-label={`${subject.name} 보관`} onClick={() => archive(subject)}>
+                          <Archive size={ICON_SIZE.inline} strokeWidth={ICON_STROKE} />
+                        </IconButton>
+                      </>
+                    }
+                  />
+                );
+              }}
             </SortableList>
           )}
           <p className="mt-3 text-12 text-sub">
-            학기가 끝난 과목은 보관하세요. 고르는 목록에서만 빠지고 오답·공부 시간·로드맵 기록은 남아요. 타이머 숫자 단축키(1~8)는 모의고사 과목 다음 내신 과목 순서예요.
+            ▲▼ 버튼이나 손잡이를 끌어서 순서를 바꿔요. 이 순서가 타이머 내신 칩과 숫자 단축키(1~8) 순서예요. 학기가 끝난 과목은 보관하세요. 고르는 목록에서만 빠지고 오답·공부 시간·로드맵 기록은 남아요.
           </p>
         </section>
 

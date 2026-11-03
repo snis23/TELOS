@@ -1,6 +1,6 @@
 import type { KeyCombo } from "./guard";
 
-/** Alt(Option) + 1~5: 메뉴 이동 (오늘, 시험 대비, 계획, 학습, 기록) */
+/** Alt(Option) + 1~5: 메뉴 이동 (오늘, 스케줄, 계획, 학습, 기록) */
 export const NAV_COMBOS: readonly KeyCombo[] = [1, 2, 3, 4, 5].map((n) => ({
   code: `Digit${n}`,
   alt: true,

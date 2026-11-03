@@ -29,6 +29,11 @@ export function formatCalendarDate(now: Date): string {
   return formatInTimeZone(now, TIME_ZONE, "M월 d일 EEEE", { locale: ko });
 }
 
+/** 5.2 머리말 제목: 다 끝내면 "오늘 할 일을 모두 끝냈어요. 수고했어요!" */
+export function todayTitle(total: number, left: number): string {
+  return total > 0 && left === 0 ? "오늘 할 일을 모두 끝냈어요. 수고했어요!" : `오늘 할 일 ${left}개 남았어요`;
+}
+
 /**
  * 5.2 머리말.
  * 날짜는 실제 시각 기준(자정에 바뀜)으로 보여 주고, 할 일·타이머·통계는 하루 기준 시각(기본 6시)을 쓴다.
@@ -38,10 +43,9 @@ export function TodayHeader() {
   const { data: tasks } = useTasks(today);
   const left = (tasks ?? []).filter((t) => !t.done_at).length;
   const total = (tasks ?? []).length;
-  const title = total > 0 && left === 0 ? "오늘 할 일을 모두 끝냈어요" : `오늘 할 일 ${left}개 남았어요`;
   return (
     <>
-      <PageHeader eyebrow={formatCalendarDate(now)} title={title} className="mb-4 pad:mb-6" />
+      <PageHeader eyebrow={formatCalendarDate(now)} title={todayTitle(total, left)} className="mb-3 pad:mb-4" />
       <BackupReminder />
     </>
   );

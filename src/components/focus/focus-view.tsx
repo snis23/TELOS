@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut, Moon, Pause, Play, Shuffle } from "lucide-react";
 import { useTimerContext } from "@/components/timer/timer-provider";
+import { NapMode } from "@/components/timer/nap-mode";
+import { SubjectChips } from "@/components/timer/subject-chips";
 import { LongSessionDialog, TimerConflictDialog } from "@/components/timer/timer-dialogs";
 import { TimerShortcuts } from "@/components/timer/timer-shortcuts";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -29,6 +31,7 @@ type WakeLockSentinelLike = { release: () => Promise<void> };
 /**
  * 5.9 집중 모드: 늘 어두운 화면, 전체 화면, 화면 꺼짐 방지.
  * 과목 이름 → 큰 타이머 → 지금 할 일 → 버튼 4개(재생, 과목 바꾸기, 쪽잠, 나가기).
+ * 쪽잠을 켜면 쪽잠 모드 화면(NapMode)이 위를 덮는다.
  * 5초 동안 손대지 않으면 버튼을 흐리게 숨기고, 누르면 다시 보인다.
  */
 export function FocusView() {
@@ -50,7 +53,6 @@ export function FocusView() {
   const subjectList = subjects ?? [];
   const subject = subjectList.find((s) => s.id === timer.selectedSubject) ?? subjectList[0];
   const running = Boolean(timer.studying);
-  const napping = timer.napping;
 
   // 지금 할 일: 그 과목의 첫 번째 안 끝낸 할 일 (눌러서 바꾸기, 체크하면 다음 할 일로)
   const open = useMemo(() => sortTasks((tasks ?? []).filter((t) => !t.done_at)), [tasks]);
@@ -120,11 +122,7 @@ export function FocusView() {
 
   useShortcut({ code: "Escape" }, exit, { allowInEditable: true });
 
-  const elapsed = napping
-    ? sessionSeconds(napping, timer.now)
-    : timer.studying
-      ? sessionSeconds(timer.studying, timer.now)
-      : 0;
+  const elapsed = timer.studying ? sessionSeconds(timer.studying, timer.now) : 0;
 
   const round = "inline-flex size-play-phone items-center justify-center rounded-full pad:size-play";
 
@@ -137,24 +135,14 @@ export function FocusView() {
       <TimerShortcuts inFocus />
       {slotLabel ? <p className="absolute top-6 text-12 text-sub">{slotLabel}</p> : null}
       <p className="flex items-center gap-2 text-14 text-sub">
-        {napping ? (
-          "쪽잠"
-        ) : (
-          <>
-            {subject ? <SubjectDot color={subject.color_key} /> : null}
-            {subject?.name ?? "과목 없음"}
-          </>
-        )}
+        {subject ? <SubjectDot color={subject.color_key} /> : null}
+        {subject?.name ?? "과목 없음"}
       </p>
-      <p
-        className={cn("num text-72 leading-none font-medium tracking-num pad:text-120", napping && "text-nap-ink")}
-        data-testid="focus-timer"
-      >
+      <p className="num text-72 leading-none font-medium tracking-num pad:text-120" data-testid="focus-timer">
         {formatHMS(elapsed)}
       </p>
 
-      {!napping ? (
-        current ? (
+      {current ? (
           <div className="flex max-w-dialog items-center gap-3 rounded-full bg-surface px-4 py-2">
             <Checkbox
               checked={false}
@@ -172,10 +160,7 @@ export function FocusView() {
           <button type="button" onClick={() => setPickingTask(true)} className="text-13 text-sub">
             {open.length ? "지금 할 일 고르기" : "남은 할 일이 없어요"}
           </button>
-        )
-      ) : (
-        <p className="text-12 text-sub">측정 중 · 공부 타이머 멈춤</p>
-      )}
+        )}
 
       <div
         className={cn(
@@ -184,26 +169,17 @@ export function FocusView() {
         )}
         aria-hidden={idle}
       >
-        {!napping ? (
-          <button type="button" onClick={timer.toggle} aria-label={running ? "타이머 일시정지" : "타이머 시작"} className={cn(round, "bg-btn text-btn-ink")}>
-            {running ? (
-              <Pause size={ICON_SIZE.play} strokeWidth={ICON_STROKE} fill="currentColor" />
-            ) : (
-              <Play size={ICON_SIZE.play} strokeWidth={ICON_STROKE} fill="currentColor" className="translate-x-px" />
-            )}
-          </button>
-        ) : null}
-        {!napping ? (
-          <button type="button" onClick={() => setPicking(true)} aria-label="과목 바꾸기" className={cn(round, "bg-surface-2 text-ink")}>
-            <Shuffle size={ICON_SIZE.tab} strokeWidth={ICON_STROKE} />
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={timer.toggleNap}
-          aria-label={napping ? "쪽잠 끝" : "쪽잠"}
-          className={cn(round, napping ? "bg-nap-on text-ink" : "bg-nap-soft text-nap-ink")}
-        >
+        <button type="button" onClick={timer.toggle} aria-label={running ? "타이머 일시정지" : "타이머 시작"} className={cn(round, "bg-btn text-btn-ink")}>
+          {running ? (
+            <Pause size={ICON_SIZE.play} strokeWidth={ICON_STROKE} fill="currentColor" />
+          ) : (
+            <Play size={ICON_SIZE.play} strokeWidth={ICON_STROKE} fill="currentColor" className="translate-x-px" />
+          )}
+        </button>
+        <button type="button" onClick={() => setPicking(true)} aria-label="과목 바꾸기" className={cn(round, "bg-surface-2 text-ink")}>
+          <Shuffle size={ICON_SIZE.tab} strokeWidth={ICON_STROKE} />
+        </button>
+        <button type="button" onClick={timer.toggleNap} aria-label="쪽잠" className={cn(round, "bg-nap-soft text-nap-ink")}>
           <Moon size={ICON_SIZE.tab} strokeWidth={ICON_STROKE} />
         </button>
         <button type="button" onClick={exit} aria-label="나가기" className={cn(round, "bg-surface-2 text-ink")}>
@@ -218,27 +194,15 @@ export function FocusView() {
       ) : null}
 
       <Dialog open={picking} onClose={() => setPicking(false)} title="과목 바꾸기">
-        <ul className="flex flex-col gap-1">
-          {subjectList.map((s) => (
-            <li key={s.id}>
-              <button
-                type="button"
-                onClick={() => {
-                  timer.selectSubject(s.id);
-                  setTaskId(null);
-                  setPicking(false);
-                }}
-                className={cn(
-                  "flex h-11 w-full items-center gap-2 rounded-input px-3 text-14",
-                  s.id === subject?.id ? "bg-nav-on text-accent-strong" : "text-ink-2",
-                )}
-              >
-                <SubjectDot color={s.color_key} />
-                {s.name}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <SubjectChips
+          className="pb-2"
+          selectedId={subject?.id}
+          onSelect={(s) => {
+            timer.selectSubject(s.id);
+            setTaskId(null);
+            setPicking(false);
+          }}
+        />
       </Dialog>
       <Dialog open={pickingTask} onClose={() => setPickingTask(false)} title="지금 할 일">
         <ul className="flex flex-col gap-1">
@@ -260,6 +224,7 @@ export function FocusView() {
       </Dialog>
       <TimerConflictDialog />
       <LongSessionDialog />
+      <NapMode />
     </div>
   );
 }

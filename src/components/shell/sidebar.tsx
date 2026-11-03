@@ -52,7 +52,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       )}
     >
       <div className={cn("mb-6 flex items-center justify-between px-3", collapsed && "land:justify-center land:px-0 pc:justify-between pc:px-3")}>
-        <span className={cn("text-15 font-semibold tracking-brand", collapsed && "land:sr-only pc:not-sr-only")}>Telos</span>
+        <span className={cn("text-15 font-semibold tracking-brand", collapsed && "land:sr-only pc:not-sr-only")}>TELOS</span>
         <button
           type="button"
           onClick={onToggle}

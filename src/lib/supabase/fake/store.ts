@@ -2,8 +2,9 @@
  * 가짜 백엔드 저장소: 테이블을 메모리에 두고 localStorage 에 저장한다.
  * PostgREST 의 동작 중 앱이 쓰는 부분(기본값, 고유 제약, 외래 키 연쇄)만 흉내 낸다.
  */
+import { unknownColumns } from "../columns";
 import type { TableName } from "../database.types";
-import { FOREIGN_KEYS, TABLE_DEFAULTS, UNIQUES } from "./schema";
+import { FOREIGN_KEYS, HAS_TRASH, TABLE_DEFAULTS, UNIQUES } from "./schema";
 
 export type Row = Record<string, unknown>;
 export type PgError = { code: string; message: string; details: string | null; hint: string | null };
@@ -96,6 +97,14 @@ export class FakeStore {
     return row;
   }
 
+  /** 실제 서버(PostgREST)처럼 없는 열에 쓰면 오류 */
+  private checkColumns(table: TableName, row: Row) {
+    const unknown = unknownColumns(table, row);
+    if (unknown.length) {
+      throw new FakeError(pgError("PGRST204", `Could not find the '${unknown[0]}' column of '${table}' in the schema cache`));
+    }
+  }
+
   private checkUnique(table: TableName, candidate: Row, ignoreId?: unknown) {
     for (const u of UNIQUES[table] ?? []) {
       if (u.when && !u.when(candidate)) continue;
@@ -116,6 +125,7 @@ export class FakeStore {
       if (input.user_id && input.user_id !== this.userId && table !== "maintenance_runs") {
         throw new FakeError(pgError("42501", "new row violates row-level security policy"));
       }
+      this.checkColumns(table, input);
       const row = this.withDefaults(table, input);
       if (onConflict) {
         const existing = this.rows(table).find((r) => onConflict.cols.every((c) => r[c] === row[c]));
@@ -138,6 +148,7 @@ export class FakeStore {
   }
 
   update(table: TableName, targets: Row[], patch: Row): Row[] {
+    this.checkColumns(table, patch);
     const updated: Row[] = [];
     for (const target of targets) {
       const next = { ...target, ...patch };
@@ -179,5 +190,5 @@ export class FakeStore {
 }
 
 export function hasTrash(table: TableName): boolean {
-  return !["profiles", "task_deferrals", "daily_stats", "pending_file_deletions", "maintenance_runs"].includes(table);
+  return HAS_TRASH.has(table);
 }

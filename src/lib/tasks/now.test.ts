@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { quoteOfDay, QUOTES } from "@/lib/quotes";
 import { pickNowTask } from "./now";
 
 const t = (p: Partial<{ id: string; done_at: string | null; start_min: number | null; end_min: number | null; slot_id: string | null; sort_order: number; must_do: boolean; deferred_count: number }>) => ({
@@ -32,14 +31,5 @@ describe("지금 할 일", () => {
     const list = [t({ id: "a", sort_order: 0 }), t({ id: "b", sort_order: 1, deferred_count: 2 }), t({ id: "c", sort_order: 2, must_do: true })];
     expect(pickNowTask(list, 0, null)?.task.id).toBe("c");
     expect(pickNowTask([t({ done_at: "x" })], 0, null)).toBeNull();
-  });
-});
-
-describe("오늘의 명언", () => {
-  it("날짜마다 하나, 같은 날은 같은 명언, 다음 날은 다음 명언", () => {
-    expect(quoteOfDay("2026-11-03")).toBe(quoteOfDay("2026-11-03"));
-    const i = QUOTES.indexOf(quoteOfDay("2026-11-03"));
-    expect(QUOTES.indexOf(quoteOfDay("2026-11-04"))).toBe((i + 1) % QUOTES.length);
-    expect(quoteOfDay("2025-06-01").text.length).toBeGreaterThan(0);
   });
 });

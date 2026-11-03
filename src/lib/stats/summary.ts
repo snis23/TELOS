@@ -82,20 +82,6 @@ export function grassDays(today: string, weeks = 16): string[][] {
   return Array.from({ length: weeks }, (_, w) => Array.from({ length: 7 }, (_, d) => addDays(start, w * 7 + d)));
 }
 
-export const STREAK_MIN_SECONDS = 30 * 60;
-
-/** 연속 달성일: 순공 30분 이상인 날이 오늘(또는 어제)까지 이어진 일 수 */
-export function streak(studyByDate: ReadonlyMap<string, number>, today: string): number {
-  const ok = (d: string) => (studyByDate.get(d) ?? 0) >= STREAK_MIN_SECONDS;
-  let day = ok(today) ? today : addDays(today, -1);
-  let n = 0;
-  while (ok(day) && n < 3650) {
-    n += 1;
-    day = addDays(day, -1);
-  }
-  return n;
-}
-
 /** 미루기 분석 (최근 30일) */
 export function deferralAnalysis(
   deferrals: readonly Pick<TaskDeferralRow, "title" | "subject_id" | "from_date">[],

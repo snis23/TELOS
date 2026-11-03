@@ -11,10 +11,11 @@ test("시험 대비: 카테고리 만들기 → 달력에 계획 → 오늘 할 
   await login(page);
   const today = await studyToday(page);
 
-  // 오늘 화면 맨 위: 명언, 지금 시각, 지금 할 일
-  const brief = page.getByRole("region", { name: "오늘의 명언과 지금 할 일" });
-  await expect(brief.locator("blockquote")).not.toBeEmpty();
-  await expect(brief.getByLabel("지금 시각")).toHaveText(/^\d{2}:\d{2}$/);
+  // 오늘 화면 맨 위: 지금 시각, 지금 일정, 지금 할 일 (명언 없음)
+  const now = page.getByTestId("now-card");
+  await expect(now.getByLabel("지금 시각")).toHaveText(/^\d{2}:\d{2}$/);
+  await expect(now.getByLabel("지금 할 일")).toContainText("할 일이 없어요");
+  await expect(page.locator("blockquote")).toHaveCount(0);
 
   await page.goto("exam/");
   await expect(page.getByText("시험을 추가하면 시험별 로드맵을 만들 수 있어요", { exact: false })).toBeVisible();

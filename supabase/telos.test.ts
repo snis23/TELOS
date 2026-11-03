@@ -1,66 +1,43 @@
 // @vitest-environment node
 /**
  * supabase/telos.sql 을 PGlite(WASM Postgres)에서 실행해 보는 테스트.
- * Supabase 의 auth·storage·realtime 은 필요한 만큼만 흉내 낸다.
- * 10.2 보관 작업: 대상 선택, 여러 번 실행해도 같은 결과 / RLS / 기본값 / 휴지통 / 백업 복원
+ * 10.2 보관 작업: 대상 선택, 여러 번 실행해도 같은 결과 / RLS / 기본값 / 휴지통 / 백업 복원 / 버전별 올리기
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it } from "vitest";
+import { SQL, createDb, schemaSnapshot, type TestDb } from "./test-db";
 
 const U1 = "11111111-1111-1111-1111-111111111111";
 const U2 = "22222222-2222-2222-2222-222222222222";
-let db: PGlite;
-
-/** Supabase 의 auth·storage·realtime 을 필요한 만큼만 흉내 낸다 */
-const SETUP = `
-    create role anon; create role authenticated;
-    create schema auth;
-    create table auth.users (id uuid primary key);
-    create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
-    grant usage on schema auth to authenticated; grant execute on function auth.uid() to authenticated;
-    grant usage on schema public to authenticated, anon;
-    create publication supabase_realtime;
-    create schema storage;
-    create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
-    create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text);
-    alter table storage.objects enable row level security;
-    create function storage.foldername(name text) returns text[] language sql as $$ select string_to_array(name, '/') $$;
-`;
-
-async function as<T = Record<string, unknown>>(uid: string, sql: string, params: unknown[] = []): Promise<T[]> {
-  await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false);`);
-  try {
-    return (await db.query<T>(sql, params)).rows;
-  } finally {
-    await db.exec("reset role;");
-  }
-}
-const one = async <T = Record<string, unknown>>(uid: string, sql: string, params: unknown[] = []) => (await as<T>(uid, sql, params))[0];
+let t: TestDb;
+let db: TestDb["db"];
+const as: TestDb["as"] = (...args) => t.as(...args);
+const one: TestDb["one"] = (...args) => t.one(...args);
 
 beforeAll(async () => {
-  db = new PGlite();
-  await db.exec(SETUP);
-  const sql = readFileSync(resolve(process.cwd(), "supabase/telos.sql"), "utf8");
+  t = await createDb([U1, U2]);
+  db = t.db;
+  const sql = SQL.latest();
   await db.exec(sql);
   await db.exec(sql); // 두 번 실행해도 안전해야 한다
-  await db.exec(`insert into auth.users values ('${U1}'), ('${U2}');`);
   await as(U1, "select public.bootstrap_user()");
   await as(U1, "select public.bootstrap_user()");
   await as(U2, "select public.bootstrap_user()");
 }, 60_000);
 
 describe("기본값과 보안", () => {
-  it("처음 로그인: 모의고사 과목 6개, 시간표 2종(40항목, 기숙사·주말 야간 자습 포함), 공휴일. 두 번 불러도 같다", async () => {
+  it("처음 로그인: 모의고사 과목 6개, 시간표 2종(37항목: 아침 자습·기숙사·주말 야간 자습), 공휴일. 두 번 불러도 같다", async () => {
     const r = await one<{ s: number; tt: number; sl: number; h: number }>(
       U1,
       "select (select count(*)::int from subjects) s, (select count(*)::int from timetables) tt, (select count(*)::int from timetable_slots) sl, (select count(*)::int from holidays) h",
     );
-    expect(r).toEqual({ s: 6, tt: 2, sl: 40, h: 64 });
+    expect(r).toEqual({ s: 6, tt: 2, sl: 37, h: 64 });
     expect((await as<{ name: string }>(U1, "select name from subjects where kind = 'mock' order by sort_order")).map((x) => x.name)).toEqual([
-      "국어", "수학", "영어", "한국사", "통합과학", "통합사회",
+      "국어", "수학", "영어", "한국사", "통합사회", "통합과학",
     ]);
+    // 평일 07:30~08:30 아침 자습 (입실·조례 없음), 주말 청소·아침 식사 없음
+    expect(await one(U1, "select start_min, end_min, category from timetable_slots where name = '아침 자습'")).toEqual({ start_min: 90, end_min: 150, category: "study" });
+    expect(await one(U1, "select count(*)::int c from timetable_slots s join timetables tt on tt.id = s.timetable_id where (tt.default_for = 'weekday' and s.name in ('입실', '조례')) or (tt.default_for = 'weekend' and s.name in ('청소', '아침 식사'))")).toEqual({ c: 0 });
+    expect(await t.q("select version, name from schema_migrations")).toEqual([{ version: 3, name: "새로 설치" }]);
     expect(await one(U1, "select start_min, end_min from timetable_slots where name = '야자 1차시'")).toEqual({ start_min: 820, end_min: 900 });
     // 하루 기준 6시: 자정 = 1080, 새벽 2시 = 1200
     expect(await one(U1, "select start_min, end_min from timetable_slots where name = '기숙사 2차시'")).toEqual({ start_min: 1140, end_min: 1200 });
@@ -227,45 +204,71 @@ describe("백업 복원 (9.5)", () => {
   });
 });
 
-describe("이전 버전 DB 올리기 (2.99)", () => {
-  it("옛 telos.sql 로 만든 DB 에 새 파일을 실행하면 새 구조로 바뀐다 (두 번 실행해도 같다)", async () => {
-    const old = readFileSync(resolve(process.cwd(), "supabase/fixtures/telos-v1.sql"), "utf8");
-    const sql = readFileSync(resolve(process.cwd(), "supabase/telos.sql"), "utf8");
-    const v1 = new PGlite();
-    const U = "33333333-3333-3333-3333-333333333333";
-    const run = async (q: string) => {
-      await v1.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${U}', false);`);
-      try {
-        await v1.exec(q);
-      } finally {
-        await v1.exec("reset role;");
-      }
-    };
-    await v1.exec(SETUP);
-    await v1.exec(old);
-    await v1.exec(`insert into auth.users values ('${U}')`);
-    await run("select public.bootstrap_user()");
-    await run(`
-      insert into ddays (type, title, date) values ('exam', '기말', '2026-12-08');
-      insert into range_items (dday_id, subject_id, name, start_no, end_no) select d.id, s.id, '문제집', 10, 80 from ddays d, subjects s where s.name = '수학';
-      insert into exam_subject_dates (dday_id, subject_id, date) select d.id, s.id, '2026-12-09' from ddays d, subjects s where s.name = '국어';
-      insert into reflections (study_date, good, bad, tomorrow, condition) values ('2026-11-01', '잘함', '', '내일', 4);
-      insert into tasks (title, study_date, source) values ('범위 할 일', '2026-11-02', 'range');
-    `);
-    await v1.exec(sql);
-    await v1.exec(sql);
-    await run("select public.bootstrap_user()");
-    const q = async <T,>(text: string) => (await v1.query<T>(text)).rows;
-    expect((await q<{ n: string; k: string; a: boolean }>("select name n, kind k, archived_at is not null a from subjects order by sort_order, name")).map((r) => `${r.n}:${r.k}${r.a ? ":보관" : ""}`)).toEqual([
-      "국어:mock", "수학:mock", "영어:mock", "통합과학:mock", "통합사회:mock", "한국사:mock", "탐구1:mock:보관", "탐구2:mock:보관",
+describe("버전별 올리기 (3장)", () => {
+  const U = "33333333-3333-3333-3333-333333333333";
+  let fresh: Record<string, string[]>;
+
+  /** 옛 SQL 로 DB 를 만들고 준비한 뒤, 지금 SQL 을 두 번 실행한다 */
+  async function upgradeFrom(old: string, prepare: (x: TestDb) => Promise<void>): Promise<TestDb> {
+    const x = await createDb([U]);
+    await x.db.exec(old);
+    await x.as(U, "select public.bootstrap_user()");
+    await prepare(x);
+    await x.db.exec(SQL.latest());
+    await x.db.exec(SQL.latest());
+    await x.as(U, "select public.bootstrap_user()");
+    return x;
+  }
+
+  beforeAll(async () => {
+    const x = await createDb([]);
+    await x.db.exec(SQL.latest());
+    fresh = await schemaSnapshot(x);
+  }, 60_000);
+
+  it("버전 1(Phase 1~6) → 최신: 데이터를 옮기고, 새로 설치한 DB 와 구조가 같다", async () => {
+    const x = await upgradeFrom(SQL.v1(), (y) =>
+      y.run(
+        U,
+        `insert into ddays (type, title, date) values ('exam', '기말', '2026-12-08');
+         insert into range_items (dday_id, subject_id, name, start_no, end_no) select d.id, s.id, '문제집', 10, 80 from ddays d, subjects s where s.name = '수학';
+         insert into exam_subject_dates (dday_id, subject_id, date) select d.id, s.id, '2026-12-09' from ddays d, subjects s where s.name = '국어';
+         insert into reflections (study_date, good, bad, tomorrow, condition) values ('2026-11-01', '잘함', '', '내일', 4);
+         insert into tasks (title, study_date, source) values ('범위 할 일', '2026-11-02', 'range');`,
+      ),
+    );
+    expect((await x.q<{ version: number }>("select version from schema_migrations order by 1")).map((r) => r.version)).toEqual([1, 2, 3]);
+    expect((await x.q<{ n: string; a: boolean }>("select name n, archived_at is not null a from subjects where kind = 'mock' order by archived_at nulls first, sort_order")).map((r) => `${r.n}${r.a ? ":보관" : ""}`)).toEqual([
+      "국어", "수학", "영어", "한국사", "통합사회", "통합과학", "탐구1:보관", "탐구2:보관",
     ]);
-    expect(await q("select s.name, e.exam_date::text d, e.range_note from exam_subjects e join subjects s on s.id = e.subject_id order by s.name")).toEqual([
+    expect(await x.q("select s.name, e.exam_date::text d, e.range_note from exam_subjects e join subjects s on s.id = e.subject_id order by s.name")).toEqual([
       { name: "국어", d: "2026-12-09", range_note: null },
       { name: "수학", d: null, range_note: "문제집 10~80" },
     ]);
-    expect(await q("select comment from reflections")).toEqual([{ comment: "잘함\n내일" }]);
-    expect(await q("select source from tasks")).toEqual([{ source: "manual" }]);
-    expect(await q("select count(*)::int c from timetable_slots where name in ('기숙사 1차시', '기숙사 2차시', '자습 6차시', '자습 12차시')")).toEqual([{ c: 4 }]);
-    expect(await q("select count(*)::int c from information_schema.tables where table_schema = 'public' and table_name in ('goals', 'range_items', 'review_checks', 'school_grades', 'mock_scores', 'targets', 'records', 'exam_subject_dates')")).toEqual([{ c: 0 }]);
+    expect(await x.q("select comment from reflections")).toEqual([{ comment: "잘함\n내일" }]);
+    expect(await x.q("select source from tasks")).toEqual([{ source: "manual" }]);
+    expect(await schemaSnapshot(x)).toEqual(fresh);
+  }, 120_000);
+
+  it("버전 2(1차 수정) → 최신: 시간표·과목 순서를 바꾸고, 새로 설치한 DB 와 구조가 같다. 다시 실행해도 그대로", async () => {
+    const x = await upgradeFrom(SQL.v2(), (y) =>
+      y.run(U, "update tasks set slot_id = null; insert into tasks (title, study_date, slot_id) select '조례 때 할 일', '2026-11-03', id from timetable_slots where name = '조례';"),
+    );
+    expect((await x.q<{ version: number }>("select version from schema_migrations order by 1")).map((r) => r.version)).toEqual([2, 3]);
+    expect((await x.q<{ name: string }>("select name from subjects where kind = 'mock' order by sort_order")).map((r) => r.name)).toEqual([
+      "국어", "수학", "영어", "한국사", "통합사회", "통합과학",
+    ]);
+    const slots = () =>
+      x.q("select tt.default_for f, s.name, s.start_min, s.end_min from timetable_slots s join timetables tt on tt.id = s.timetable_id where s.name in ('입실', '조례', '아침 자습', '청소', '아침 식사') order by 1, 3");
+    const after = await slots();
+    expect(after).toEqual([
+      { f: "weekday", name: "아침 자습", start_min: 90, end_min: 150 },
+      { f: "weekday", name: "청소", start_min: 620, end_min: 640 },
+    ]);
+    // 지운 차시에 배정했던 할 일은 남고 배정만 풀린다
+    expect(await x.q("select title, slot_id from tasks")).toEqual([{ title: "조례 때 할 일", slot_id: null }]);
+    expect(await schemaSnapshot(x)).toEqual(fresh);
+    await x.db.exec(SQL.latest());
+    expect(await slots()).toEqual(after);
   }, 120_000);
 });

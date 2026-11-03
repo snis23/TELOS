@@ -1,6 +1,5 @@
 "use client";
 
-import { useRef, useState } from "react";
 import { Repeat } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { MoreMenu } from "@/components/ui/menu";
@@ -10,7 +9,6 @@ import { ICON_SIZE, ICON_STROKE } from "@/lib/design/icons";
 import type { RecurrenceRow, SubjectRow, TaskRow } from "@/lib/supabase/database.types";
 import { deferLabel, deferLevel } from "@/lib/tasks/defer";
 import { ruleLabel } from "@/lib/tasks/recurrence";
-import { useCoarsePointer } from "@/lib/use-layout";
 
 type Props = {
   task: TaskRow;
@@ -25,83 +23,28 @@ type Props = {
   onSplit: () => void;
 };
 
-const SWIPE_OPEN = -168;
-
 /**
- * 5.6 할 일 항목: 체크박스 → 과목 태그 → 제목 → 반복 표시 → 예상 시간.
+ * 5.6 할 일 항목: 체크박스 → 과목 태그 → 제목 → 반복 표시 → 예상 시간 → ⋯ 메뉴.
  * 5.7 미룬 횟수에 따라 점, 바탕, 버튼 3개.
- * 항목 메뉴: 터치 기기는 왼쪽으로 밀기, 마우스는 ⋯ 버튼.
+ * 제목을 누르거나 ⋯ 메뉴의 "제목·과목 수정"으로 수정 창을 연다 (모든 기기에서 ⋯ 가 보인다).
  */
 export function TaskItem({ task, subject, recurrence, handle, onToggle, onEdit, onDefer, onDelete, onMustDo, onSplit }: Props) {
-  const coarse = useCoarsePointer();
   const done = Boolean(task.done_at);
   const level = done ? 0 : deferLevel(task);
   const label = done ? null : deferLabel(task);
   const canDefer = !done && task.source !== "recurrence";
-  const [offset, setOffset] = useState(0);
-  const drag = useRef<{ x: number; y: number; base: number; active: boolean } | null>(null);
 
   const menuItems = [
+    { label: "제목·과목 수정", onSelect: onEdit },
     ...(canDefer ? [{ label: "내일로 넘기기", onSelect: onDefer }] : []),
-    { label: "수정", onSelect: onEdit },
     { label: "삭제", onSelect: onDelete, danger: true },
   ];
 
-  const onPointerDown = (e: React.PointerEvent) => {
-    if (e.pointerType !== "touch") return;
-    drag.current = { x: e.clientX, y: e.clientY, base: offset, active: false };
-  };
-  const onPointerMove = (e: React.PointerEvent) => {
-    const d = drag.current;
-    if (!d) return;
-    const dx = e.clientX - d.x;
-    const dy = e.clientY - d.y;
-    if (!d.active) {
-      if (Math.abs(dy) > 10) {
-        drag.current = null;
-        return;
-      }
-      if (Math.abs(dx) < 10) return;
-      d.active = true;
-    }
-    setOffset(Math.min(0, Math.max(SWIPE_OPEN, d.base + dx)));
-  };
-  const onPointerUp = () => {
-    const d = drag.current;
-    drag.current = null;
-    if (!d?.active) return;
-    setOffset((o) => (o < SWIPE_OPEN / 2 ? SWIPE_OPEN : 0));
-  };
-  const close = (fn: () => void) => () => {
-    setOffset(0);
-    fn();
-  };
-
   return (
-    <div className="relative overflow-hidden rounded-input" data-testid="task-item" data-defer-level={level}>
-      {coarse ? (
-        <div className="absolute inset-y-0 right-0 flex items-stretch" aria-hidden={offset === 0}>
-          {canDefer ? (
-            <button type="button" tabIndex={offset ? 0 : -1} onClick={close(onDefer)} className="w-14 bg-surface-2 text-12 text-ink-2">
-              내일로
-            </button>
-          ) : null}
-          <button type="button" tabIndex={offset ? 0 : -1} onClick={close(onEdit)} className="w-14 bg-nav-on text-12 text-accent-strong">
-            수정
-          </button>
-          <button type="button" tabIndex={offset ? 0 : -1} onClick={close(onDelete)} className="w-14 bg-urgent-bg text-12 text-urgent-ink">
-            삭제
-          </button>
-        </div>
-      ) : null}
+    <div className="rounded-input" data-testid="task-item" data-defer-level={level}>
       <div
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        style={{ transform: offset ? `translateX(${offset}px)` : undefined }}
         className={cn(
-          "relative flex flex-col gap-1 rounded-input px-2 py-1.5 transition-transform touch:touch-pan-y",
+          "relative flex flex-col gap-1 rounded-input px-2 py-1.5",
           level === 2 && "bg-warn-bg",
           level === 3 && "bg-urgent-bg",
           level < 2 && "bg-surface",
@@ -129,7 +72,7 @@ export function TaskItem({ task, subject, recurrence, handle, onToggle, onEdit, 
             </span>
           ) : null}
           {task.est_minutes ? <span className="num shrink-0 text-11 text-sub">{task.est_minutes}분</span> : null}
-          <MoreMenu label={`${task.title} 메뉴`} items={menuItems} className={cn(coarse && "sr-only focus-within:not-sr-only")} />
+          <MoreMenu label={`${task.title} 메뉴`} items={menuItems} />
         </div>
         {label ? (
           <p

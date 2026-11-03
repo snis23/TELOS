@@ -16,13 +16,15 @@ export function TermBanner({ today }: { today: string }) {
   if (!noYear && !needsTermReview(term, profile.reviewed_term)) return null;
   return (
     <>
-      <div className="card mb-6 flex flex-wrap items-center justify-between gap-3 bg-nav-on pad:mb-8" role="status">
-        <p className="text-13 text-accent-strong">
+      <div className="mb-4 flex items-center justify-between gap-3 rounded-item bg-nav-on px-4 py-2.5" role="status">
+        <p className="min-w-0 text-13 text-accent-strong">
           {noYear
             ? "입학 연도를 정하고 이번 학기 내신 과목을 추가해 주세요."
             : `${termLabel(term.key)}가 시작됐어요. 내신 과목을 정리해 주세요.`}
         </p>
-        <Button onClick={() => setOpen(true)}>과목 정리</Button>
+        <Button className="shrink-0" onClick={() => setOpen(true)}>
+          과목 정리
+        </Button>
       </div>
       <TermReviewDialog open={open} onClose={() => setOpen(false)} />
     </>

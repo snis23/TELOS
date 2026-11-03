@@ -18,7 +18,7 @@ export type NavItem = {
 /** 4.1 메뉴 구조. 사이드바와 Alt+1~5 가 이 순서를 쓴다. */
 export const MAIN_NAV: readonly NavItem[] = [
   { href: "/", label: "오늘", icon: Sun },
-  { href: "/exam/", label: "시험 대비", icon: ClipboardList },
+  { href: "/exam/", label: "스케줄", icon: ClipboardList },
   { href: "/plan/", label: "계획", icon: MapIcon },
   { href: "/learn/", label: "학습", icon: BookOpen },
   { href: "/record/", label: "기록", icon: ChartColumn },
@@ -26,7 +26,7 @@ export const MAIN_NAV: readonly NavItem[] = [
 
 export const SETTINGS_NAV: NavItem = { href: "/settings/", label: "설정", icon: Settings };
 
-/** 하단 탭: 오늘, 시험 대비, 계획, 학습 + 더보기 */
+/** 하단 탭: 오늘, 스케줄, 계획, 학습 + 더보기 */
 export const TAB_NAV: readonly NavItem[] = MAIN_NAV.slice(0, 4);
 
 /** 더보기 시트: 기록, 설정 */

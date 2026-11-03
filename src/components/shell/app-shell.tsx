@@ -12,6 +12,7 @@ import { OfflineBanner } from "./offline-banner";
 import { ShortcutTable } from "./shortcut-table";
 import { Sidebar } from "./sidebar";
 import { TimerProvider } from "@/components/timer/timer-provider";
+import { NapMode } from "@/components/timer/nap-mode";
 import { TimerShortcuts } from "@/components/timer/timer-shortcuts";
 import { useAppStartup } from "./startup";
 
@@ -81,6 +82,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <BottomTabs />
+      <NapMode />
     </div>
     </TimerProvider>
   );

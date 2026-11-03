@@ -20,10 +20,9 @@ type Trashable = {
 export type ProfileRow = Base & {
   theme: ThemePreference;
   day_start_hour: number;
+  /** 학기 시작일 "MM-DD" */
   sem1_start: string;
-  sem1_end: string;
   sem2_start: string;
-  sem2_end: string;
   /** 입학 연도 (학년 계산용) */
   entry_year: number | null;
   /** 마지막으로 내신 과목을 정리한 학기 ("2-1" = 2학년 1학기) */
@@ -46,13 +45,11 @@ export type SubjectRow = Base &
     archived_at: string | null;
   };
 
-export type UnitStatus = "todo" | "doing" | "done";
 export type UnitRow = Base &
   Trashable & {
     subject_id: string;
     name: string;
     sort_order: number;
-    status: UnitStatus;
   };
 
 export type TimetableDefault = "weekday" | "weekend" | "none";
@@ -257,31 +254,34 @@ export type TableRows = {
 
 export type TableName = keyof TableRows;
 
-/** 휴지통을 쓰는 테이블 */
+/**
+ * 휴지통을 쓰는 테이블. 지울 때 순서(자식 먼저)이며 넣을 때는 반대 순서다.
+ * supabase/telos.sql 의 telos_trash_tables() 와 같은 순서여야 한다 (supabase/schema-sync.test.ts 가 확인).
+ */
 export const TRASHABLE_TABLES = [
-  "subjects",
-  "units",
-  "timetables",
-  "timetable_slots",
-  "holidays",
-  "date_timetables",
+  "wrong_note_photos",
+  "wrong_notes",
+  "flash_cards",
+  "flash_decks",
+  "tasks",
+  "roadmap_items",
+  "exam_subjects",
   "recurrences",
   "ddays",
-  "exam_subjects",
-  "roadmap_items",
-  "tasks",
   "timer_sessions",
   "reflections",
+  "units",
   "mock_rounds",
-  "wrong_notes",
-  "wrong_note_photos",
-  "flash_decks",
-  "flash_cards",
+  "date_timetables",
+  "timetable_slots",
+  "timetables",
+  "holidays",
+  "subjects",
 ] as const satisfies readonly TableName[];
 export type TrashableTable = (typeof TRASHABLE_TABLES)[number];
 
-/** 백업에 들어가는 테이블 (restore_backup 의 순서와 무관) */
-export const BACKUP_TABLES = [...TRASHABLE_TABLES, "task_deferrals", "daily_stats"] as const satisfies readonly TableName[];
+/** 백업에 들어가는 테이블. 지울 때 순서이며 복원할 때는 반대 순서로 넣는다 (restore_backup 과 같다) */
+export const BACKUP_TABLES = ["task_deferrals", "daily_stats", ...TRASHABLE_TABLES] as const satisfies readonly TableName[];
 export type BackupTable = (typeof BACKUP_TABLES)[number];
 
 type TableDef<Row> = {

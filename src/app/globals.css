@@ -210,7 +210,6 @@
   --radius-key: 4px;
   --radius-tag: 6px;
   --radius-input: 10px;
-  --radius-dday-phone: 14px;
   --radius-item: 16px;
   --radius-card: 20px;
 
@@ -221,7 +220,6 @@
   --spacing-check: 17px;
   --spacing-tag-phone: 18px;
   --spacing-tag: 22px;
-  --spacing-condition: 26px;
   --spacing-chip-phone: 36px;
   --spacing-input: 38px;
   --spacing-chip: 40px;
@@ -231,7 +229,6 @@
   --spacing-tabbar: 56px;
   --spacing-sidebar-collapsed: 64px;
   --spacing-sidebar: 200px;
-  --spacing-left-col: 380px;
 
   --container-*: initial;
   --container-login: 360px;

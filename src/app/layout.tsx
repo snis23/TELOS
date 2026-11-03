@@ -20,7 +20,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: { default: "Telos", template: "%s · Telos" },
+  title: { default: "TELOS", template: "%s · TELOS" },
   description: "내신과 수능까지 쓰는 학습 보조",
   robots: { index: false, follow: false },
 };

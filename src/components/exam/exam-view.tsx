@@ -127,7 +127,7 @@ function ExamViewInner() {
 
   return (
     <>
-      <PageHeader title="시험 대비" />
+      <PageHeader title="스케줄" />
       <Tabs label="시험" tabs={TABS} value={tab} onChange={setTab} className="mb-4" />
       <CardErrorBoundary>
         {tab === "roadmap" ? (

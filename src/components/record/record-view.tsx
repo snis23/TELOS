@@ -27,7 +27,6 @@ import {
   grassLevel,
   lastDays,
   periodRange,
-  streak,
   sumTotals,
   todayPlanned,
   totalsFromStats,
@@ -94,18 +93,12 @@ export function RecordView() {
           {tab === "summary" ? (
             <>
               <InsightsCard today={today} />
-              <div className="grid gap-6 pad:gap-8 land:grid-cols-2">
-                <WeekBars totals={totals} today={today} />
-                <StreakCard totals={totals} today={today} />
-              </div>
+              <WeekBars totals={totals} today={today} />
             </>
           ) : tab === "study" ? (
             <>
               <StatsCard totals={totals} today={today} subjects={subjects} subjectOrder={(subjectList ?? []).map((s) => s.id)} />
-              <div className="grid gap-6 pad:gap-8 land:grid-cols-2">
-                <WeekBars totals={totals} today={today} />
-                <StreakCard totals={totals} today={today} />
-              </div>
+              <WeekBars totals={totals} today={today} />
               <GrassCard totals={totals} today={today} />
             </>
           ) : tab === "exam" ? (
@@ -228,21 +221,6 @@ function WeekBars({ totals, today }: { totals: Map<string, DayTotal>; today: str
   );
 }
 
-function StreakCard({ totals, today }: { totals: Map<string, DayTotal>; today: string }) {
-  const byDate = new Map([...totals.entries()].map(([d, t]) => [d, t.study]));
-  const n = streak(byDate, today);
-  return (
-    <Card title="연속 달성일">
-      <p className="num text-36 leading-none font-semibold tracking-num">
-        {n}
-        <span className="ml-1 text-14 font-normal text-sub">일</span>
-      </p>
-      <p className="mt-2 text-12 text-sub">순공 30분 이상인 날이 오늘(또는 어제)까지 이어진 날이에요</p>
-    </Card>
-  );
-}
-
-/** 공부 잔디: 최근 16주, 7행, 칸 12px, 간격 3px */
 function GrassCard({ totals, today }: { totals: Map<string, DayTotal>; today: string }) {
   const weeks = grassDays(today);
   return (

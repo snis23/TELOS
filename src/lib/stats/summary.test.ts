@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deferralAnalysis, executionRate, grassDays, grassLevel, periodRange, streak, todayPlanned, totalsFromStats } from "./summary";
+import { deferralAnalysis, executionRate, grassDays, grassLevel, periodRange, todayPlanned, totalsFromStats } from "./summary";
 
 describe("기록 화면 (8.1)", () => {
   it("daily_stats → 날짜별 합계", () => {
@@ -36,17 +36,6 @@ describe("기록 화면 (8.1)", () => {
     expect(g[0][0]).toBe("2026-07-20");
   });
 
-  it("연속 달성일: 오늘(또는 어제)까지", () => {
-    const m = new Map([
-      ["2026-10-30", 3600],
-      ["2026-10-31", 1800],
-      ["2026-11-01", 4000],
-      ["2026-11-02", 600],
-    ]);
-    expect(streak(m, "2026-11-02")).toBe(3); // 오늘은 30분 미만이라 어제까지
-    expect(streak(new Map([...m, ["2026-11-02", 2000]]), "2026-11-02")).toBe(4);
-    expect(streak(m, "2026-11-04")).toBe(0);
-  });
 
   it("미루기 분석", () => {
     const r = deferralAnalysis(
