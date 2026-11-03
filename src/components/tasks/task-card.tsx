@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarRange, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { CalendarRange, ChevronLeft, ChevronRight, Plus, Upload } from "lucide-react";
 import { RoadmapPicker } from "@/components/roadmap/roadmap-picker";
+import { RoadmapPusher } from "@/components/roadmap/roadmap-pusher";
 import { useTimerContext } from "@/components/timer/timer-provider";
 import { Button, IconButton } from "@/components/ui/button";
 import { CardErrorBoundary } from "@/components/ui/error-boundary";
@@ -72,6 +73,7 @@ export function TaskCard() {
   const [pending, setPending] = useState<Pending>(null);
   const [splitting, setSplitting] = useState<TaskRow | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pusherOpen, setPusherOpen] = useState(false);
   const [staleDismissed, setStaleDismissed] = useState(() => {
     try {
       return window.localStorage.getItem(STALE_KEY) === today;
@@ -111,17 +113,21 @@ export function TaskCard() {
   return (
     <section aria-label={title} className="card flex flex-col gap-4" data-testid="task-card">
       <header className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-14 font-semibold">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="whitespace-nowrap text-14 font-semibold">
             {title}{" "}
             <span className="num font-medium text-sub" data-testid="task-count">
               {done}/{tasks.length}
             </span>
           </h2>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 whitespace-nowrap">
             <Button variant="secondary" pill onClick={() => setPickerOpen(true)}>
               <CalendarRange size={ICON_SIZE.inline} strokeWidth={ICON_STROKE} aria-hidden />
               로드맵에서
+            </Button>
+            <Button variant="secondary" pill onClick={() => setPusherOpen(true)}>
+              <Upload size={ICON_SIZE.inline} strokeWidth={ICON_STROKE} aria-hidden />
+              로드맵으로
             </Button>
             <Button variant="primary" pill onClick={() => openAdd()} aria-keyshortcuts="A">
               <Plus size={ICON_SIZE.inline} strokeWidth={ICON_STROKE} aria-hidden />
@@ -282,6 +288,7 @@ export function TaskCard() {
       />
       <SplitDialog task={splitting} onClose={() => setSplitting(null)} onSplit={(titles) => splitting && actions.split(splitting, titles)} />
       <RoadmapPicker open={pickerOpen} onClose={() => setPickerOpen(false)} date={viewDate} />
+      <RoadmapPusher open={pusherOpen} onClose={() => setPusherOpen(false)} date={viewDate} />
     </section>
   );
 }

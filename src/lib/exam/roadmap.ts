@@ -141,3 +141,23 @@ export function roadmapCandidates<T extends Pick<RoadmapItemRow, "id" | "study_d
 export function roundLabel(round: number | null): string {
   return round == null ? "" : `${round}회독`;
 }
+
+/**
+ * 할 일을 올릴 수 있는 시험: 할 일 날짜 당일이나 그 뒤에 있는 시험 중 그 과목이 들어간 시험 (가까운 시험 먼저).
+ * 시험 과목을 아직 하나도 넣지 않은 시험은 시험 종류에 맞는 과목(fallback)이면 된다.
+ */
+export function examsForSubject<E extends Pick<DdayRow, "id" | "type" | "date" | "deleted_at">>(
+  subjectId: string,
+  date: string,
+  exams: readonly E[],
+  examSubjects: readonly Pick<ExamSubjectRow, "dday_id" | "subject_id" | "deleted_at">[],
+  fallback: (exam: E) => ReadonlySet<string>,
+): E[] {
+  return exams
+    .filter((e) => e.type === "exam" && !e.deleted_at && e.date >= date)
+    .filter((e) => {
+      const ids = examSubjects.filter((x) => x.dday_id === e.id && !x.deleted_at).map((x) => x.subject_id);
+      return ids.length > 0 ? ids.includes(subjectId) : fallback(e).has(subjectId);
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
