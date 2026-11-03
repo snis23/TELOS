@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login, studyToday } from "./helpers";
+import { addTask, login, studyToday } from "./helpers";
 
 function addDays(date: string, days: number): string {
   const d = new Date(`${date}T00:00:00Z`);
@@ -82,4 +82,40 @@ test("새 학기 정리: 입학 연도를 정하고 내신 과목을 추가하�
   const school = page.getByRole("region", { name: "내신 과목" });
   await expect(school.getByText("문학")).toBeVisible();
   await expect(school.getByText("대수")).toBeVisible();
+});
+
+test("할 일 → 로드맵 올리기: 체크한 할 일만 올라가고, 끝내면 로드맵 칸도 끝난다", async ({ page }) => {
+  await login(page);
+  const today = await studyToday(page);
+  await page.goto("exam/");
+  await page.getByRole("button", { name: "시험 추가" }).click();
+  const dialog = page.getByRole("dialog", { name: "일정 추가" });
+  await dialog.getByLabel("시험 종류").selectOption({ label: "모의고사" });
+  await dialog.getByLabel("이름").fill("11월 모의고사");
+  await dialog.getByLabel("시험 첫날").fill(addDays(today, 10));
+  await dialog.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByRole("region", { name: "11월 모의고사" })).toContainText("D-10");
+
+  await page.goto("");
+  const card = page.getByTestId("task-card");
+  await addTask(page, "수학 기출 20문제", { subject: "수학" });
+  await addTask(page, "과목 없는 일");
+  await card.getByRole("button", { name: "로드맵으로" }).click();
+  const pusher = page.getByRole("dialog", { name: /할 일을 로드맵에 올리기/ });
+  await expect(pusher.getByLabel("올릴 시험")).toContainText("11월 모의고사");
+  await expect(pusher.getByText("과목 없는 일")).toHaveCount(0); // 과목 없는 할 일은 못 올린다
+  await pusher.getByRole("checkbox", { name: "수학 기출 20문제 고르기" }).click();
+  await pusher.getByRole("button", { name: "1개 올리기" }).click();
+  await expect(page.getByText("11월 모의고사 로드맵에 1개를 올렸어요")).toBeVisible();
+
+  // 이미 올린 할 일은 다시 안 나온다
+  await card.getByRole("button", { name: "로드맵으로" }).click();
+  await expect(pusher.getByText("올릴 할 일이 없어요", { exact: false })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // 할 일을 끝내면 로드맵 칸도 끝난다
+  await card.getByRole("checkbox", { name: "수학 기출 20문제 완료" }).click();
+  await page.waitForTimeout(300);
+  await page.goto("exam/");
+  await expect(page.locator(`[data-date="${today}"]`).first()).toContainText("1/1");
 });

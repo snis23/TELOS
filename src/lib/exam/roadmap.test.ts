@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   examProgress,
   examProgressMap,
+  examsForSubject,
   itemsByDate,
   monthMatrix,
   roadmapCandidates,
@@ -96,5 +97,29 @@ describe("오늘 할 일로 가져올 로드맵 칸", () => {
     expect(c.today.map((i) => i.id)).toEqual(["t"]);
     expect(c.overdue.map((i) => i.id)).toEqual(["o1", "o2"]);
     expect(c.upcoming.map((i) => i.id)).toEqual(["u"]);
+  });
+
+  it("할 일을 올릴 시험: 그날 이후, 그 과목이 든 시험, 가까운 순", () => {
+    const base = { type: "exam" as const, deleted_at: null };
+    const exams = [
+      { ...base, id: "far", date: "2026-12-20" },
+      { ...base, id: "near", date: "2026-11-20" },
+      { ...base, id: "past", date: "2026-11-01" },
+      { ...base, id: "gone", date: "2026-11-25", deleted_at: "x" },
+      { ...base, id: "perf", date: "2026-11-25", type: "performance" as const },
+      { ...base, id: "empty", date: "2026-11-30" },
+    ];
+    const rows = [
+      { dday_id: "far", subject_id: "m", deleted_at: null },
+      { dday_id: "near", subject_id: "m", deleted_at: null },
+      { dday_id: "near", subject_id: "k", deleted_at: null },
+      { dday_id: "past", subject_id: "m", deleted_at: null },
+      { dday_id: "gone", subject_id: "m", deleted_at: null },
+      { dday_id: "perf", subject_id: "m", deleted_at: null },
+    ];
+    const fallback = () => new Set(["m"]);
+    expect(examsForSubject("m", "2026-11-03", exams, rows, fallback).map((e) => e.id)).toEqual(["near", "empty", "far"]);
+    expect(examsForSubject("k", "2026-11-03", exams, rows, fallback).map((e) => e.id)).toEqual(["near"]);
+    expect(examsForSubject("m", "2026-11-21", exams, rows, fallback).map((e) => e.id)).toEqual(["empty", "far"]);
   });
 });

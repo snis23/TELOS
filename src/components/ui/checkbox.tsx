@@ -8,11 +8,13 @@ export function Checkbox({
   onChange,
   label,
   className,
+  disabled,
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
   label: string;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
@@ -20,8 +22,9 @@ export function Checkbox({
       role="checkbox"
       aria-checked={checked}
       aria-label={label}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={cn("hit inline-flex shrink-0 items-center justify-center", className)}
+      className={cn("hit inline-flex shrink-0 items-center justify-center disabled:opacity-40", className)}
     >
       <span
         className={cn(
