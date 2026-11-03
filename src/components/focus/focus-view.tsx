@@ -20,8 +20,7 @@ import { ICON_SIZE, ICON_STROKE } from "@/lib/design/icons";
 import { overlapSeconds } from "@/lib/stats/daily";
 import { useShortcut } from "@/lib/shortcuts/use-shortcut";
 import { sortTasks } from "@/lib/tasks/defer";
-import { formatDurationKo, formatHMS } from "@/lib/timer/format";
-import { sessionSeconds } from "@/lib/timer/sessions";
+import { formatDurationKo, formatHMS, formatHMSShort } from "@/lib/timer/format";
 
 const IDLE_MS = 5000;
 const WAKE_NOTICE_KEY = "telos:wake-lock-notice";
@@ -122,7 +121,8 @@ export function FocusView() {
 
   useShortcut({ code: "Escape" }, exit, { allowInEditable: true });
 
-  const elapsed = timer.studying ? sessionSeconds(timer.studying, timer.now) : 0;
+  // 큰 시간: 고른 과목의 오늘 전체 시간 (이번 측정만이 아니라)
+  const subjectToday = subject ? (timer.totals.bySubject.get(subject.id) ?? 0) : 0;
 
   const round = "inline-flex size-play-phone items-center justify-center rounded-full pad:size-play";
 
@@ -139,7 +139,10 @@ export function FocusView() {
         {subject?.name ?? "과목 없음"}
       </p>
       <p className="num text-72 leading-none font-medium tracking-num pad:text-120" data-testid="focus-timer">
-        {formatHMS(elapsed)}
+        {formatHMS(subjectToday)}
+      </p>
+      <p className="text-12 text-sub">
+        오늘 순공(전체 과목) <span className="num">{formatHMSShort(timer.totals.total)}</span>
       </p>
 
       {current ? (

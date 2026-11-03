@@ -8,6 +8,14 @@ test("4. 타이머 시작 → 과목 전환 → 쪽잠 모드(다른 기능 막�
   await expect(timer.getByText("측정 중")).toBeVisible();
   await expect(timer.getByTestId("timer-elapsed")).not.toHaveText("00:00:00", { timeout: 4000 });
 
+  // 큰 시간은 그 과목의 오늘 전체 시간: 멈춰도 0으로 돌아가지 않고, 다시 켜면 이어서 쌓인다
+  await timer.getByRole("button", { name: "타이머 일시정지" }).click();
+  const paused = await timer.getByTestId("timer-elapsed").textContent();
+  expect(paused).not.toBe("00:00:00");
+  await timer.getByRole("button", { name: "타이머 시작" }).click();
+  await expect(timer.getByTestId("timer-elapsed")).not.toHaveText(paused ?? "", { timeout: 4000 });
+  expect((await timer.getByTestId("timer-elapsed").textContent())! > paused!).toBe(true);
+
   // 측정 중 과목 전환: 바로 새 기록
   await timer.getByRole("button", { name: /^수학/ }).click();
   await expect(timer.getByRole("button", { name: /^수학/ })).toHaveAttribute("aria-pressed", "true");

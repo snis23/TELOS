@@ -7,13 +7,13 @@ import { SubjectDot } from "@/components/ui/subject-dot";
 import { useSubjects } from "@/lib/data/subjects";
 import { ICON_SIZE, ICON_STROKE } from "@/lib/design/icons";
 import { formatHM, formatHMS, formatHMSShort } from "@/lib/timer/format";
-import { sessionSeconds } from "@/lib/timer/sessions";
 import { SessionListDialog } from "./session-list-dialog";
 import { SubjectChips } from "./subject-chips";
 import { useTimerContext } from "./timer-provider";
 
 /**
  * 5.4 과목별 타이머 (작게): 과목·시간·재생 버튼 한 줄, 아래에 모의고사 | 내신 과목 칩.
+ * 큰 시간은 이번 측정이 아니라 고른 과목의 오늘 전체 시간, "오늘 순공"은 모든 과목 합계다.
  * 오늘 화면에서 시험 일정 옆 칸을 차지한다.
  */
 export function TimerCard() {
@@ -23,7 +23,7 @@ export function TimerCard() {
   const subjectList = subjects ?? [];
   const selected = subjectList.find((s) => s.id === timer.selectedSubject) ?? subjectList[0];
   const running = Boolean(timer.studying);
-  const elapsed = timer.studying ? sessionSeconds(timer.studying, timer.now) : 0;
+  const subjectToday = selected ? (timer.totals.bySubject.get(selected.id) ?? 0) : 0;
 
   return (
     <section aria-label="과목별 타이머" className="card flex flex-col gap-3">
@@ -51,12 +51,13 @@ export function TimerCard() {
           <p className="flex items-center gap-1.5 text-13 text-ink-2">
             {selected ? <SubjectDot color={selected.color_key} /> : null}
             <span className="truncate">{selected?.name ?? "과목을 추가해 주세요"}</span>
+            {selected ? <span className="shrink-0 text-11 text-sub">오늘 전체</span> : null}
           </p>
           <p className="num text-28 leading-tight font-medium tracking-num" aria-live="off" data-testid="timer-elapsed">
-            {formatHMS(elapsed)}
+            {formatHMS(subjectToday)}
           </p>
           <button type="button" onClick={() => setShowLog(true)} className="text-12 text-sub hover:text-ink">
-            오늘 순공 <span className="num">{formatHMSShort(timer.totals.total)}</span>
+            오늘 순공(전체 과목) <span className="num" data-testid="timer-total">{formatHMSShort(timer.totals.total)}</span>
             <span className="ml-2 text-accent">기록 보기</span>
           </button>
         </div>
